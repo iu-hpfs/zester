@@ -6,12 +6,12 @@ We will be updating this repository with more information moving forward, but fo
 
 In order to run Zester, first run the standard ZFS ZDB tool against each MDT and OST dataset on your filesystem:
 
-zdb -dddd <dataset> > filename.zdb
+    zdb -dddd <dataset> > filename.zdb
 
 Saving the output as follows for each MDT and OST on your filesystem:
 
-for MDT: mdt_<mdtidx>.zdb
-for OST: ost_<ostidx>.zdb
+    for MDT: mdt_<mdtidx>.zdb
+    for OST: ost_<ostidx>.zdb
 
 The filename is important, as it is what Zester uses to identify the ZDB dump type as well as MDT and OST indexes.
 
@@ -19,9 +19,11 @@ NOTE: MDT and OST indexes must be specified in decimal
 
 Once all of the zdb dumps are available, run Zester with all of the MDT and OST ZDB generated dumps:
 
-python2 zester mdt_0.zdb ost_0.zdb ost_1.zdb
+    python2 zester.py mdt_0.zdb ost_0.zdb ost_1.zdb
 
 This will parse all ZDB dumps into SQLite representations, then use those SQLite databases to assemble metadata about the Lustre file system (including size) and generate a 'metadata.db' SQLite database that can be queried against.
+
+NOTE: All testing has been done against Lustre 2.8 with ZFS 0.6.5.2-1. We have tested a variety of stripe sizes against a system with 10 OSTS. We have not yet tested against DNE. We will be testing against additional configurations moving forward and would look forward to collaboration for this.
 
 NOTE: Only regular files are currently processed. Directories will be supported soon.
 
