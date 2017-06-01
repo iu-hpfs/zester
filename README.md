@@ -4,6 +4,8 @@ Zester is a work in progress project to enable Lester-like functionality for Lus
 
 We will be updating this repository with more information moving forward, but for the immediate future the slides from the "Roads to Zester" LUG 17 talk included in this repository are the best introduction to Zester and how it works.
 
+KNOWN ISSUES: It has been reported that Zester's file size computation (as described in the Zester slides and in the current code) does not take into account subtleties with stripe extent offsets and in these cases will over-report file sizes. We will be adding test coverage and working to address this.
+
 In order to run Zester, first run the standard ZFS ZDB tool against each MDT and OST dataset on your filesystem:
 
     zdb -dddd <dataset> > filename.zdb
