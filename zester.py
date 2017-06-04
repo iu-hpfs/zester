@@ -12,7 +12,9 @@
 # Systems group in the Pervasive Technology Institute at Indiana University.
 
 from datetime import datetime
+import cPickle as pickle
 from time import mktime
+import argparse
 import lovinfo
 import fidinfo
 import fileinput
@@ -21,7 +23,6 @@ import sys
 import binascii
 import time
 import compare
-import cPickle as pickle
 import sys
 
 # db____
@@ -412,7 +413,6 @@ def persist(zesterDbFname, mdt_dbs, ost_dbs):
 
 
 def parse(filePaths):
-    # cprofile: strptime-limited
     mdt_dbs = {}
     ost_dbs = {}
     for name in filePaths:
@@ -445,12 +445,21 @@ def parse(filePaths):
 
 # main____
 
-def process(files_to_parse):
-    mdt_dbs, ost_dbs = parse(files_to_parse)
-    persist(zesterDbFname, mdt_dbs, ost_dbs)
-
 zesterDbFname  = 'metadata.db'
-files_to_parse = sys.argv[1:]
+
+msg = '''Usage: zester [OPTION]... mdt_<mdtidx>.zdb ... ost_<ostidx>.zdb ...
+Parse MDT and ZDB dumps into a SQLite representation then assemble into a queryable metadata.db SQLite DB file
+
+Options:
+ --parse         only parse ZDB dumps into SQLite DB, do not assemble
+'''
 
 if __name__ == '__main__':
-    process(files_to_parse)
+    if len(sys.argv) < 2:
+        print(msg)
+        sys.exit(1)
+    if sys.argv[1] == '--parse':
+        mdt_dbs, ost_dbs = parse(sys.argv[2:])
+    else:
+        mdt_dbs, ost_dbs = parse(sys.argv[1:])
+        persist(zesterDbFname, mdt_dbs, ost_dbs)

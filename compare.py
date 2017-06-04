@@ -15,7 +15,7 @@ import sqlite3
 import sys
 
 def doCompare(zester_db_fname,posix_db_fname, prefix):
-    print('doCompare', (zester_db_fname, posix_db_fname))
+    print('doCompare', (zester_db_fname, posix_db_fname, prefix))
     zester_db = sqlite3.connect(zester_db_fname, isolation_level=None)
     zester_db.text_factory = str
     posix_db = sqlite3.connect(posix_db_fname, isolation_level=None)
