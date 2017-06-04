@@ -11,46 +11,20 @@
 # Written by Kenrick Rawlings & Shawn Slavin for the High Performance File
 # Systems group in the Pervasive Technology Institute at Indiana University.
 
-from datetime import datetime
+import binascii
 import cPickle as pickle
-from time import mktime
-import argparse
-import lovinfo
-import fidinfo
 import fileinput
 import sqlite3
 import sys
-import binascii
 import time
-import compare
-import sys
+from datetime import datetime
+from time import mktime
 
-# db____
+import fidinfo
+import lovinfo
+import metadata
 
-def setup_metadata_db(meta_db):
-    meta_cur = meta_db.cursor()
-    meta_cur.execute('drop index if exists metadata_mode_index')
-    meta_cur.execute('drop index if exists metadata_project_index')
-    meta_cur.execute('drop index if exists metadata_uid_index')
-    meta_cur.execute('drop table if exists metadata')
-    meta_cur.execute(
-        'CREATE TABLE metadata (fid TEXT PRIMARY KEY, uid INTEGER, '
-        'gid INTEGER, ' +
-        'ctime INTEGER, mtime INTEGER, atime INTEGER, mode INTEGER, '
-        'type INTEGER, size INTEGER, ' +
-        'path TEXT, inode INTEGER, objects TEXT, project INTEGER, '
-        'parent_fid TEXT);')
-    meta_cur.close()
-    meta_cur = meta_db.cursor()
-    meta_cur.execute('delete from metadata')
-    meta_cur.close()
-
-def save_metadata_obj(meta_cur, atime, ctime, mtime, uid, gid, mode, size, inode, objects, fid, path, project, type_id):
-    cmd = 'INSERT INTO [metadata] ' + \
-          '(atime, ctime, mtime, uid, gid, mode, size, inode, ' \
-          ' objects, fid, path, project, type) ' + \
-          ' VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
-    meta_cur.execute(cmd, (atime, ctime, mtime, uid, gid, mode, size, inode, objects, fid, path, project, type_id))
+# zfs-db____
 
 def open_zfsobj_db(zfsobjDbFame):
     zfsobj_db = sqlite3.connect(zfsobjDbFame)
@@ -75,7 +49,6 @@ def setup_zfsobj_db(zfsobjDbFame):
         ' zfs_type type TEXT, PRIMARY KEY (id, from_id, to_id))')
     zfsobj_cur.close()
     return zfsobj_db
-
 
 def save_zfs_obj(zfs_cur, obj_dict, dataset_dicts):
     id = obj_dict['id']
@@ -367,25 +340,12 @@ def persistObjects(meta_db, mdt_dbs, ost_dbs):
                         showTiming(count, start, ts)
                     path = path.lstrip('/ROOT')
                     parsed_lov = lovinfo.parseLovInfo(binascii.hexlify(str(fidinfo.decoder(trustedLov))))
-                    # note: currently saving path in the metadata fid column since primary key in
-                    #  IU metadata db schema and MDT FID decoding currently experimental
-                    fid = path # '0x' + parsed_lov['lmm_seq'] + ':0x' + parsed_lov['lmm_object_id'] + ':0x0'
+                    # todo: MDT FID decoding currently experimental, add tests
+                    # fid = '0x' + parsed_lov['lmm_seq'] + ':0x' + parsed_lov['lmm_object_id'] + ':0x0'
+                    fid = ''
                     size = getTotalSize(ost_dbs, parsed_lov)
-                    mode = str(mode)
-                    inode = 0
-                    objects = ""
-                    type_id = 0
-                    project = None
-                    cmd = 'INSERT INTO [metadata] ' \
-                          '(atime, ctime, mtime, uid, gid, mode, size, inode, objects, fid, path, project, type) ' \
-                          'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
-                    try:
-                        meta_cur.execute(cmd, (atime, ctime, mtime, uid, gid, mode, size, inode,
-                                               objects, fid, path, project, type_id))
-                    except:
-                        print("Unexpected error:", sys.exc_info()[0])
-                        print(cmd)
-                        raise
+                    type = 'f' # todo: only regular files currently supported
+                    metadata.save_metadata_obj(meta_cur, path, uid, gid, ctime, mtime, atime, mode, type, size, fid)
             except:
                 print('fail', mdt_curr_row)
                 raise
@@ -398,19 +358,17 @@ def persistObjects(meta_db, mdt_dbs, ost_dbs):
     meta_cur.close()
     print('done')
 
-
 def persist(zesterDbFname, mdt_dbs, ost_dbs):
     print('persisting objects')
     meta_db = sqlite3.connect(zesterDbFname)
     meta_db.text_factory = str
-    setup_metadata_db(meta_db)
+    metadata.setup_metadata_db(meta_db)
     persistObjects(meta_db, mdt_dbs, ost_dbs)
     print('bulding metadata indexes')
     meta_cur = meta_db.cursor()
     meta_db.commit()
     meta_cur.close()
     meta_db.close()
-
 
 def parse(filePaths):
     mdt_dbs = {}

@@ -21,11 +21,11 @@ def doCompare(zester_db_fname,posix_db_fname, prefix):
     posix_db = sqlite3.connect(posix_db_fname, isolation_level=None)
     posix_db.text_factory = str
 
-    match_file = open("match.txt", "w")
-    posix_only_file = open("posix_only.txt", "w")
+    match_file       = open("match.txt", "w")
+    posix_only_file  = open("posix_only.txt", "w")
     zester_only_file = open("zester_only.txt", "w")
 
-    query = "SELECT path, fid, atime, ctime, mtime, uid, gid, mode, size, inode, objects, project, type FROM [metadata] ORDER BY PATH"
+    query = "SELECT path, uid, gid, ctime, mtime, atime, mode, type, size, fid FROM [metadata] ORDER BY PATH"
 
     zester_cursor = zester_db.cursor()
     zester_cursor.execute(query)
@@ -56,8 +56,8 @@ def doCompare(zester_db_fname,posix_db_fname, prefix):
             zester_curr_path = prefix + zester_curr_row[0]
             posix_curr_path = posix_curr_row[0]
             if zester_curr_path == posix_curr_path:
-                (zester_path, zester_fid, zester_atime, zester_ctime, zester_mtime, zester_uid, zester_gid, zester_mode, zester_size, zester_inode, zester_objects, zester_project, zester_type) = zester_curr_row
-                (posix_path, posix_fid, posix_atime, posix_ctime, posix_mtime, posix_uid, posix_gid, posix_mode, posix_size, posix_inode, posix_objects, posix_project, posix_type) = posix_curr_row
+                (zester_path, zester_uid, zester_gid, zester_ctime, zester_mtime, zester_atime, zester_mode, zester_type, zester_size, zester_fid) = zester_curr_row
+                (posix_path,  posix_uid,  posix_gid,  posix_ctime,  posix_mtime,  posix_atime,  posix_mode,  posix_type,  posix_size, posix_fid) = posix_curr_row
                 match_file.write(zester_curr_path + " ")
                 if abs(int(zester_atime) - int(posix_atime)) > 2:
                     match_file.write(" (!!atime: Z: " + str(zester_atime) + " P: " + str(posix_atime) + ")")
@@ -101,8 +101,6 @@ def doCompare(zester_db_fname,posix_db_fname, prefix):
 
 zesterDbFname = 'metadata.db'
 posixDbFname  = 'trystat.db'
-
-# '/mnt/zester/'
 
 if __name__ == '__main__':
     doCompare(zesterDbFname, posixDbFname, sys.argv[1])
