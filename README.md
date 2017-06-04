@@ -17,6 +17,8 @@ Saving the output as follows for each MDT and OST on your filesystem:
 
 The filename is important, as it is what Zester uses to identify the ZDB dump type as well as MDT and OST indexes.
 
+Zester also now supports a "--parse" option that will only parse ZDB dumps into the SQLite DB representation, but does not assemble them into the metadata.db.
+
 NOTE: MDT and OST indexes must be specified in decimal
 
 Once all of the zdb dumps are available, run Zester with all of the MDT and OST ZDB generated dumps:
