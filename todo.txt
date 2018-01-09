@@ -1,0 +1,3 @@
+todo: add more information file generation script
+todo: add more information canonical metadata DB generation script
+todo: add more information comparison script
