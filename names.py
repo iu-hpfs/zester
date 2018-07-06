@@ -24,16 +24,6 @@ def insert_name(curs, fid, name, parent_fid):
                  [fid, name, parent_fid]).fetchone()
 
 
-def resolve(curs, entry_id, sofar):
-    lkup_sql = "select parent_id, name from entry where name_id = ?"
-    (parent_id, name) = curs.execute(lkup_sql, [entry_id]).fetchone()
-    new_sofar = os.path.join(name, sofar)
-    if parent_id == 0:
-        return new_sofar
-    else:
-        return resolve(curs, parent_id, new_sofar)
-
-
 def populate_names(curs, parent_dir, parent_id):
     for entry in os.listdir(parent_dir):
         path_entry = os.path.join(parent_dir, entry)
