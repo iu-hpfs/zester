@@ -50,10 +50,10 @@ def fid_to_path(conn, srch_fid):
     def helper(fid0, sofar):
         sql = "select * from name where fid = ?"
         (_, fid, name, parent_fid) = conn.execute(sql, [fid0]).fetchone()
+        sofar.append(name)
         if parent_fid is None:
             return sofar
         else:
-            sofar.append(name)
             return helper(parent_fid, sofar)
 
     ls0 = helper(srch_fid, [])
@@ -71,7 +71,7 @@ def dump(cur):
 
 def test_names():
     conn = sqlite3.connect("names.db")
-    # drop_names_table(conn)
+    drop_names_table(conn)
     create_names_table(conn)
     curs = conn.cursor()
     populate_names(curs, "test_dir", None)
