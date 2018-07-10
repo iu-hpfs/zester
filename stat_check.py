@@ -67,8 +67,7 @@ def make_stats(topdir, dbPath):
         for item in files + dirs:
             path = subdir + os.sep + item
             print(path)
-            fid = path # todo: this matches zester for now
-            # fid = str(oct(i))
+            fid = path.replace('/mnt/zester/','',1) # todo: this matches zester for now
             # use os.lstat(), which does *not* follow symbolic links
             st = os.lstat(path)
             uid = st.st_uid
@@ -93,4 +92,4 @@ def make_stats(topdir, dbPath):
     conn.close()
 
 if __name__ == '__main__':
-    make_stats(os.getcwdu(), 'trystat.db')
+    make_stats(os.getcwdu(), '/root/stats.db')

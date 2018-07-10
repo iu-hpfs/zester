@@ -49,12 +49,18 @@ def parseLovInfo(hexLov):
 # Note: The offsets are what they are, relative to the first element of hexLov.
 # I've corrected for zero-offset addressing wherever an offset is used.
 # [SDS, 11/23/16]
+#
+# #define LOV_USER_MAGIC_V1       0x0BD10BD0
+# #define LOV_USER_MAGIC_V3       0x0BD30BD0
+# Recall that hexLov is little-endian, and so LOV_USER_MAGIC_V1 would be D00BD10B
+# Where hexLov[5] corresponds to the difference between v1 (pool not in use) and v3
+# (pool in use).
     if hexLov[5] == '3':
         poolInUse = True
-        offset = 97
+        offset = 96
     else:
         poolInUse = False
-        offset = 65
+        offset = 64
 
 # From get-lov-info.sh (note field #'s are unit-offset in the commentary):
 # fields 8 - 16 UNKNOWN
@@ -62,9 +68,11 @@ def parseLovInfo(hexLov):
 #
 # fields 17 - 22 are the lmm object id
 # order is 21,22,19,20,17,18
+#
+# zero-offset order: 30, 31, 28, 29, 26, 27, 24, 25, 22, 23, 20, 21, 18, 19, 16, 17
 
     lmmObjId = []
-    for i in [ 20, 21, 18, 19, 16, 17 ]:
+    for i in [ 30, 31, 28, 29, 26, 27, 24, 25, 22, 23, 20, 21, 18, 19, 16, 17 ]:
         lmmObjId.append(hexLov[i])
 
 # Join list elements, in order, resulting in a string.
@@ -74,9 +82,10 @@ def parseLovInfo(hexLov):
 # fields 21 - 32 UNKNOWN
 # fields 33 - 42 are the lmm seq
 # order is 41,42,39,40,37,38,35,36,33,34
-
+#
+# zero-offset order: 46, 47, 44, 45, 42, 43, 40, 41, 38, 39, 36, 37, 34, 35, 32, 33
     lmmSeq = []
-    for i in [ 40, 41, 38, 39, 36, 37, 34, 35, 32, 33 ]:
+    for i in [ 46, 47, 44, 45, 42, 43, 40, 41, 38, 39, 36, 37, 34, 35, 32, 33 ]:
         lmmSeq.append(hexLov[i])
 
 # Join list elements, in order, resulting in a string.
@@ -92,15 +101,26 @@ def parseLovInfo(hexLov):
 # ||\-----> 256M to 3840M
 # |\------> 64k to 960k
 # \-------> 1M to 15M
+#
+# 2018-05-07, SDS
+# This decoding was a little bit confused because little-endian places 48 and 49 were ignored, making the assumption that the rest
+# multiplied 64k, which is (I believe a minimum stripe size in Lustre). However, if you swab32() the places, then places 48 and 49
+# fall into the 16^0 and 16^1 places in the hex number. So, unless those places ever hold non-zero values, the minimum hex value
+# for stripe size would then be 0x000100, which would be 64k. However, I'm not sure we should ignore 48 and 49 in our decoding.
+#
+#    tmpSize = []
+#    for i in [ 54, 55, 52, 53 ]:
+#        tmpSize.append(hexLov[i])
+#
+#    tmpSize = ''.join(tmpSize)
+#
+#   # multiply stripe size by 64k, return value is bytes in decimal
+#    lmmStripeSize = str(int(tmpSize, 16) * 65536)
 
-    tmpSize = []
-    for i in [ 54, 55, 52, 53 ]:
-        tmpSize.append(hexLov[i])
-
-    tmpSize = ''.join(tmpSize)
-
-   # multiply stripe size by 64k, return value is bytes in decimal
-    lmmStripeSize = str(int(tmpSize, 16) * 65536)
+    lmmStripeSize = []
+    for i in [ 54, 55, 52, 53, 50, 51, 48, 49  ]:
+        lmmStripeSize.append(hexLov[i])
+    lmmStripeSize = ''.join(lmmStripeSize)
 
 # From get-lov-info.sh (note field #'s are unit-offset in the commentary):
 # field 57 - 58 is stripe width in hex
@@ -108,14 +128,16 @@ def parseLovInfo(hexLov):
 # do not have a working example of an file striped creater than 255
 #
 # Note that lmmStripeCount is still hexadecimal for now...
-    lmmStripeCount = hexLov[56:58]  # Include hexLov[56] and hexLov[57].
-# Apparently not byte swapped?
-#    for i in [ 57, 56 ]:
-#        lmmStripeCount.append(hexLov[i])
-
-# Join list elements, in order, resulting in a string.
+    lmmStripeCount = []
+    for i in [ 58, 59, 56, 57 ]:
+        lmmStripeCount.append(hexLov[i])
     lmmStripeCount = ''.join(lmmStripeCount)
 #    lmmStripeCount = str(int(lmmStripeCount, 16)) # Convert to decimal
+
+    lmmLayoutGeneration = []
+    for i in [ 62, 63, 60, 61 ]:
+        lmmLayoutGeneration.append(hexLov[i])
+    lmmLayoutGeneration = ''.join(lmmLayoutGeneration)
 
 # From get-lov-info.sh (note field #'s are unit-offset in the commentary):
 # GET_LMM_POOL() {
@@ -129,9 +151,9 @@ def parseLovInfo(hexLov):
         lmmPoolValue = hexLov[64:96]   # Include hexLov[64] through hexLov[95].
 
         for istart in range(0,32,2):
-            iend = istart + 1
-            # Include lmmPoolValue[istart] through lmmPoolValue[iend].
-            nextByte = int(str(lmmPoolValue[istart:iend+1]),16)
+            istop = istart + 2
+            # Include lmmPoolValue[istart] through lmmPoolValue[istop-1].
+            nextByte = int(str(lmmPoolValue[istart:istop]),16)
             lmmPool += chr(nextByte)
         lmmPool = lmmPool.strip()
         lmmPool = lmmPool.rstrip('\x00')
@@ -139,39 +161,61 @@ def parseLovInfo(hexLov):
 # From get-lov-info.sh (note field #'s are unit-offset in the commentary):
 # GET_OST_OBJID() {
 # offset depends on if pool's are used is 47  [Not certain what Tom meant here]
-# 97 w/pool, 65 w/out pool
+# 96 w/pool, 64 w/out pool
 
     ostObjId = ''
-    recordNum = 0
-    recordWidth = 47
 
+    recordWidth = 48
+    
 # Loop through records for ostObjId values.
 # [Remember lmmStripeCount is a string value for a hexidecimal number.]
-    while recordNum < int(lmmStripeCount, 16):
 
-        recordNum += 1
-        recordOffset = recordWidth * recordNum
+    for recordNum in range( int(lmmStripeCount, 16) ):
 
-# Recall that offset is already zero-offset. So, no modification to algorithm
-# needed here.
-# Corrects for zero-offset addressing by subtracting 1 from computed iend value
-        iend = offset + recordOffset - 1
-        istart = iend - recordWidth
-
-        record = hexLov[istart:iend+1]
+        istart = offset + recordNum * recordWidth
+        istop = istart + recordWidth
+        record = hexLov[istart:istop]
 
 # ostIndex lives in 42nd element of record
-        ostIndex=record[41]
+# [not quite; 2018-05-07; it's u64:objid|u64:group|u32:gen|u32:ost/obdidx]
+# so, using zero-offset notation in little endian, it would be
+# [objid:group: gen :ostid]
+# [00-15:16-31:32-39:40-47]
+
+
+        fid = hex(int(lmmSeq,16)) + ':' + hex(int(lmmObjId,16)) + ':0x0'
+        ostIndex = []
+        for i in [ 46, 47, 44, 45, 42, 43, 40, 41 ]:
+            ostIndex.append(record[i])
+        ostIndex = ''.join(ostIndex)
+        ostIndex = str(int(ostIndex, 16))
+
+
+# For the record, I am completely confused about where the first 8 bytes
+# is the group or objid value. The following seems to produce results
+# consistent with lfs getstripe output, but I can't figure out why.
 
 # Pull out ostObjId
-        ostObjIdValue = ''
-
-        for i in [4, 5, 2, 3, 0, 1]:
-            ostObjIdValue += record[i]
-
-        offset += 1
-
+# Some magic happens when the lfs getstripe 'group' values are non-zero, which
+# occurs when the files are located on an MDT other than MDT0. In that case,
+# using the group value bytes gives us the correct object indices on the OSTs.
+# If the group value is zero, the correct object indicies are those in the
+# second u64/8-byte objid value (as you might expect). So, check the first, and
+# decide whether to go with the latter. There must be more dark magic I haven't
+# seen yet. See my Dropbox/Work/trusted.lov.notes file. [2018-05-07, SDS]
+        ostObjIdValue = []
+        for i in [ 30, 31, 28, 29, 26, 27, 24, 25, 22, 23, 20, 21, 18, 19, 16, 17 ]: 
+            ostObjIdValue.append(record[i])
+        ostObjIdValue = ''.join(ostObjIdValue)
         ostObjIdValueDecimal = str(int(ostObjIdValue, 16))
+
+        if (ostObjIdValueDecimal == '0'):
+            ostObjIdValue = []
+            for i in [ 14, 15, 12, 13, 10, 11, 8, 9, 6, 7, 4, 5, 2, 3, 0, 1]: 
+               ostObjIdValue.append(record[i])
+            ostObjIdValue = ''.join(ostObjIdValue)
+            ostObjIdValueDecimal = str(int(ostObjIdValue, 16))
+
         ostObjId += (' ' + ostIndex + ' ' + ostObjIdValueDecimal)
 
     return {

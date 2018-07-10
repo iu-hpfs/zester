@@ -35,7 +35,7 @@ def setup_zfsobj_db(zfsobjDbFame):
     zfsobj_db = open_zfsobj_db(zfsobjDbFame)
     zfsobj_cur = zfsobj_db.cursor()
     zfsobj_cur.execute('drop index if exists zfsobj_trustedlov_index')
-    zfsobj_cur.execute('drop index if exists fatzap_from_id_index')
+#    zfsobj_cur.execute('drop index if exists fatzap_from_id_index')
     zfsobj_cur.execute('DROP TABLE IF EXISTS zfsobj')
     zfsobj_cur.execute(
         'CREATE TABLE zfsobj (id INTEGER PRIMARY KEY, path TEXT,'
@@ -43,10 +43,10 @@ def setup_zfsobj_db(zfsobjDbFame):
         ' atime INTEGER, mode INTEGER, objType CHAR(1), ' +
         ' size INTEGER, trustedFid TEXT, trustedLov TEXT,'
         ' objects TEXT, fid TEXT)')
-    zfsobj_cur.execute('DROP TABLE IF EXISTS fatzap')
-    zfsobj_cur.execute(
-        'CREATE TABLE fatzap (id INTEGER, from_id INTEGER, to_id INTEGER,'
-        ' zfs_type type TEXT, PRIMARY KEY (id, from_id, to_id))')
+#    zfsobj_cur.execute('DROP TABLE IF EXISTS fatzap')
+#    zfsobj_cur.execute(
+#        'CREATE TABLE fatzap (id INTEGER, fid TEXT, from_id INTEGER,'
+#        ' to_id INTEGER, zfs_type type TEXT, PRIMARY KEY (id, from_id, to_id))')
     zfsobj_cur.close()
     return zfsobj_db
 
@@ -76,12 +76,14 @@ def save_zfs_obj(zfs_cur, obj_dict, dataset_dicts):
                                   obj_dict.get('objects', None),
                                   obj_dict.get('fid', None),
                                   ))
-        cmd = 'INSERT INTO [fatzap] ' \
-              '(id, from_id, to_id, zfs_type)' + \
-              ' VALUES (?, ?, ?, ?)'
-        if 'fatZap' in obj_dict:
-            for key, val in obj_dict['fatZap'].items():
-                zfs_cur.execute(cmd, (objID, key, val['target'], val['type']))
+        fid = obj_dict.get('fid', None)
+#        cmd = 'INSERT INTO [fatzap] ' \
+#              '(id, fid, from_id, to_id, zfs_type)' + \
+#              ' VALUES (?, ?, ?, ?, ?)'
+
+#        if 'fatZap' in obj_dict:
+#            for key, val in obj_dict['fatZap'].items():
+#                zfs_cur.execute(cmd, (objID, fid, key, val['target'], val['type']))
 
 # utility code
 
@@ -172,14 +174,19 @@ def parseZdb(id, inputfile, zfsobj_db=None, datasetDicts=None):
                     chopped = line.split('(type: ')
                     pair = chopped[0].strip().split(' = ')
                     type = chopped[1].rstrip().rstrip(')')
-                    try:
-                        left = int(pair[0])
-                        if 'fatZap' not in objDict:
-                            objDict['fatZap'] = {}
-                        objDict['fatZap'][left] = {'target': int(pair[1]),
-                                                   'type': type}
-                    except:
+                    if (type == 'Regular File'):
+                        try:
+                            name = int(pair[0])
+                            idx = int(pair[1])
+                            if 'fatZap' not in objDict:
+                                objDict['fatZap'] = {}
+                            objDict['fatZap'][name] = {'target': idx,
+                                                       'type': type}
+                        except:
+                            pass
+                    else:
                         pass
+#                        print('Not saving info for type {0:s}.'.format(type))
             elif datasetName and (objID is not None) and \
                     (tabsAtBeginning(line) == 1):
                 stripped = line[1:].rstrip('\n')
@@ -230,16 +237,25 @@ def parseZdb(id, inputfile, zfsobj_db=None, datasetDicts=None):
                         if name == 'trusted.lov':
                             trustedLov = objDict['trusted.lov'] = pair[1]
                             try:
-                                parsed = lovinfo.parseLovInfo(binascii.hexlify(str(fidinfo.decoder(trustedLov))))
+                                tmphexlov=binascii.hexlify(str(fidinfo.decoder(trustedLov)))
+                                parsed = lovinfo.parseLovInfo(tmphexlov)
                                 objDict['objects'] = str(parsed['ost_index_objids'])
                                 parsed_lov = lovinfo.parseLovInfo(binascii.hexlify(str(fidinfo.decoder(trustedLov))))
                                 fid = hex(int(parsed_lov['lmm_seq'],16)) + ':' + hex(int(parsed_lov['lmm_object_id'],16)) + ':0x0'
                                 objDict['fid'] = fid
+#                                if objDict['path'].endswith('tmp749380'):
+#                                    print( objDict );
                             except:
                                 if 'ZFS directory' not in objDict['objType']:
-                                    # print(objDict)
                                     raise
                                 pass
+                        if name == 'trusted.lma':
+                            trustedLma = pair[1]
+                            # trusted.lma is u32:u32:fid in little-endian
+                            # where fid is u64:u32:u32.
+                            # So trim the first 8 bytes to leave the fid
+                            fid2 = str(fidinfo.decode_fid(trustedLma[32:]))
+
                         line = inputfile.readline().strip()
                     if ("UNKNOWN OBJECT TYPE" in line):
                         pass
@@ -278,27 +294,44 @@ def parseZdb(id, inputfile, zfsobj_db=None, datasetDicts=None):
 
 # persist-db____
 
-def lookup(ost_dbs, ostIdx, objId):
+#def lookup(ost_dbs, ostIdx, objId):
+#    ost_zfsobj_db = ost_dbs[ostIdx]
+#    query = 'select id, from_id, to_id, zfs_type from fatzap where ' \
+#            'from_id=' + str(objId) + ' and zfs_type="Regular File"'
+def lookup(ost_dbs, ostIdx, fid):
     ost_zfsobj_db = ost_dbs[ostIdx]
-    query = 'select id, from_id, to_id, zfs_type from fatzap where ' \
-            'from_id=' + str(objId) + ' and zfs_type="Regular File"'
-    fatzap_cursor = ost_zfsobj_db.cursor()
-    fatzap_cursor.execute(query)
-    all_fatzap = fatzap_cursor.fetchall()
-    fatzap_cursor.close()
-    if len(all_fatzap) > 1:
-        print('bam zap tot: ' + str(len(all_fatzap)))
-    for fatzap_row in all_fatzap:
-        (id, from_id, to_id, zfs_type) = fatzap_row
-        zfsobj_cursor = ost_zfsobj_db.cursor()
-        zfsobj_cursor.execute('SELECT id, path, uid, gid, ctime, mtime, atime, mode, objType, '
-                              'size, trustedFid, trustedLov, fid FROM zfsobj where id=' + str(to_id))
-        all_row = zfsobj_cursor.fetchall()
-        zfsobj_cursor.close()
-        for zfsobj_row in all_row:
-            (id, path, uid, gid, ctime, mtime, atime, mode, objType, size, trustedFid, trusedLov, fid) = zfsobj_row
-            return size
-    return 0
+    # fid.rsplit(':',1)[0] trims off the version, which is different for each
+    # ost stripe of the FID with a 0x0 version.
+
+    partialfid = fid.rsplit(':',1)[0] + ':%'
+    # Note: It's important to 
+#    query = 'select id, from_id, to_id, zfs_type from fatzap where ' \
+#            'fid like "' + partialfid + '" and zfs_type="Regular File"'
+#    fatzap_cursor = ost_zfsobj_db.cursor()
+#    fatzap_cursor.execute(query)
+#    all_fatzap = fatzap_cursor.fetchall()
+#    fatzap_cursor.close()
+
+# Ask Ken about this. [2018-05-09, SDS]
+#    if len(all_fatzap) > 1:
+#        print('objId, bam zap tot: ' + str(objId) + ', ' + str(len(all_fatzap)))
+
+#    for fatzap_row in all_fatzap:
+#        (id, from_id, to_id, zfs_type) = fatzap_row
+    zfsobj_cursor = ost_zfsobj_db.cursor()
+    zfsobj_cursor.execute('SELECT id, path, uid, gid, ctime, mtime, atime, mode, objType, size, trustedFid, trustedLov, fid FROM zfsobj where fid like "' + partialfid + '"')
+    all_row = zfsobj_cursor.fetchall()
+    zfsobj_cursor.close()
+
+    if len(all_row) > 1:
+        print('More than one partial fid match to [', partialfid, '] in ost index', ostIdx)
+
+    size_of_stripes_on_ost = 0
+    for zfsobj_row in all_row:
+        (id, path, uid, gid, ctime, mtime, atime, mode, objType, size, trustedFid, trusedLov, fid) = zfsobj_row
+        size_of_stripes_on_ost = size_of_stripes_on_ost + size
+
+    return size_of_stripes_on_ost
 
 def getTotalSize(ost_dbs, parsed_lov):
     totalSize = 0
@@ -308,9 +341,14 @@ def getTotalSize(ost_dbs, parsed_lov):
             ost_index_objids = map(
                 lambda tup: (int(tup[0]), int(tup[1])),
                 parsed_raw)
+# This is where we can make client calls to lookup sizes in parallel...
             for lovOstIdx, lovObjIdx in ost_index_objids:
-                totalSize = totalSize + lookup(ost_dbs, lovOstIdx,
-                                               lovObjIdx)
+#                totalSize = totalSize + lookup(ost_dbs, lovOstIdx,
+#                                               lovObjIdx)
+
+                fid = hex(int(parsed_lov['lmm_seq'],16)) + ':' + \
+                      hex(int(parsed_lov['lmm_object_id'],16)) + ':0x0'
+                totalSize = totalSize + lookup(ost_dbs, lovOstIdx, fid)
         except:
             print(parsed_raw)
             raise
@@ -342,10 +380,13 @@ def persistObjects(meta_db, mdt_dbs, ost_dbs):
                     parsed_lov = lovinfo.parseLovInfo(binascii.hexlify(str(fidinfo.decoder(trustedLov))))
                     # todo: MDT FID decoding currently experimental, add tests
                     # fid = '0x' + parsed_lov['lmm_seq'] + ':0x' + parsed_lov['lmm_object_id'] + ':0x0'
-                    fid = ''
+                    fid = hex(int(parsed_lov['lmm_seq'],16)) + ':' + \
+                          hex(int(parsed_lov['lmm_object_id'],16)) + ':0x0'
+
+                    # fid = ''
                     size = getTotalSize(ost_dbs, parsed_lov)
                     type = 'f' # todo: only regular files currently supported
-                    metadata.save_metadata_obj(meta_cur, path, uid, gid, ctime, mtime, atime, mode, type, size, fid)
+                    metadata.save_metadata_obj(meta_cur, mdtDatasetId, path, uid, gid, ctime, mtime, atime, mode, type, size, fid)
             except:
                 print('fail', mdt_curr_row)
                 raise
@@ -388,8 +429,8 @@ def parse(filePaths):
         zfsobj_cur = zfsobj_db.cursor()
         zfsobj_cur.execute('create index zfsobj_trustedlov_index on '
                            'zfsobj (trustedLov)')
-        zfsobj_cur.execute('create index fatzap_from_id_index on fatzap '
-                           '(from_id)')
+#        zfsobj_cur.execute('create index fatzap_from_id_index on fatzap '
+#                           '(from_id)')
         zfsobj_db.commit()
         ts = time.clock()
         showTiming(count, start, ts)
