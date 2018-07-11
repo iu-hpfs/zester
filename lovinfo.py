@@ -199,7 +199,7 @@ def parseLovInfo(hexLov):
 # Some magic happens when the lfs getstripe 'group' values are non-zero, which
 # occurs when the files are located on an MDT other than MDT0. In that case,
 # using the group value bytes gives us the correct object indices on the OSTs.
-# If the group value is zero, the correct object indicies are those in the
+# If the group value is zero, the correct object indices are those in the
 # second u64/8-byte objid value (as you might expect). So, check the first, and
 # decide whether to go with the latter. There must be more dark magic I haven't
 # seen yet. See my Dropbox/Work/trusted.lov.notes file. [2018-05-07, SDS]
