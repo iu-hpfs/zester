@@ -13,7 +13,8 @@
 # Indiana University.
 
 # Example of trusted.link for a directory file called 'striped'
-# From struct linkea_header, defined in <lustre-src-root>/lustre/include/lustre/lustre_idl.h:
+# From struct linkea_header,
+# defined in <lustre-src-root>/lustre/include/lustre/lustre_idl.h:
 # link header
 #         __u32 leh_magic;
 #         __u32 leh_reccount;
@@ -21,13 +22,16 @@
 #         /* future use */
 #         __u32 padding1;
 #         __u32 padding2;
-# From struct linkea_entry, defined in <lustre-src-root>/lustre/include/lustre/lustre_idl.h:
+# From struct linkea_entry,
+# defined in <lustre-src-root>/lustre/include/lustre/lustre_idl.h:
 # link entry
 #         unsigned char      lee_reclen[2];
 #         unsigned char      lee_parent_fid[sizeof(struct lu_fid)];
 #         char               lee_name[0];
 #
-# From linkea_entry_unpack(), defined in <lustre-src-root>/lustre/obdclass/linkea.c
+# From linkea_entry_unpack(),
+# defined in <lustre-src-root>/lustre/obdclass/linkea.c
+#
 # ln_namelen = *reclen - sizeof(struct link_ea_entry);
 #
 # Sample code shows that sizeof(struct link_ea_entry) = 18
@@ -54,7 +58,9 @@
 # parent fid version:     \000\000\000\000                 0x00000000         = 0x0
 # filename:               striped
 #
-# Also, note that the lu_fid struct uses u64 for fid_seq; u32 for fid_oid; and u32 for fid_ver:
+# Also, note that the lu_fid struct uses u64 for fid_seq; u32 for fid_oid;
+# and u32 for fid_ver:
+#
 # Note: In <lustre-src-root>/lustre/include/lustre/lustre_user.h
 # struct lu_fid {
 #        /**
@@ -75,69 +81,77 @@
 # };
 #
 
+
 def parse_link_info(trusted_link_hex):
     import binascii
 
-    link_magic = []             # Four-byte integer
-    for i in [ 6, 7, 4, 5, 2, 3, 0, 1 ]:
+    link_magic = []  # Four-byte integer
+    for i in [6, 7, 4, 5, 2, 3, 0, 1]:
         link_magic.append(trusted_link_hex[i])
 
     link_magic = ''.join(link_magic)
 
-    hard_link_count = []        # Four-byte integer
-    for i in [ 14, 15, 12, 13, 10, 11, 8, 9 ]:
+    hard_link_count = []  # Four-byte integer
+    for i in [14, 15, 12, 13, 10, 11, 8, 9]:
         hard_link_count.append(trusted_link_hex[i])
 
     hard_link_count = ''.join(hard_link_count)
-    hard_link_count = int(hard_link_count,16)
+    hard_link_count = int(hard_link_count, 16)
 
     # Some debugging output
-    print('Link EA magic:   {0:s}'.format(hex(int(link_magic,16))))
+    print('Link EA magic:   {0:s}'.format(hex(int(link_magic, 16))))
     print('Hard Link Count: {0:d}'.format(hard_link_count))
 
-# Skip one eight-byte integer that holds the header length: trusted_link_hex[16:32]
-# Skip two four-byte integers of padding: trusted_link_hex[32:40] and trusted_link_hex[40:48]
-# Pick up on trusted_link_hex[48]...
+    # Skip one eight-byte integer that holds the header length:
+    # trusted_link_hex[16:32]
+    #
+    # Skip two four-byte integers of padding: trusted_link_hex[32:40] and
+    # trusted_link_hex[40:48]
+    #
+    # Pick up on trusted_link_hex[48]...
 
-    j = 48       # j is the place holder for indexing, as we loop through multiple records
+    j = 48  # j is the place holder for indexing, as we loop through records
 
-    results = [] # return value will be a list of dictionaries with 'pfid' and 'filename' keys
+    # Return value will be a list of dicts with 'pfid' and 'filename' keys
+    results = []
 
     # Loop over parsing of record length, parent FID, and filename.
     for ilink in range(hard_link_count):
 
-        record_length = []           # Two-byte integer; not swapped
+        record_length = []  # Two-byte integer; not swapped
         # for i in [48, 49, 50, 51]:
         for i in range(4):
-            record_length.append(trusted_link_hex[i+j])
+            record_length.append(trusted_link_hex[i + j])
         record_length = ''.join(record_length)
-        record_length = int(record_length,16)
+        record_length = int(record_length, 16)
         j = j + 4
 
         # Parse FID sequence, object_id, and version.
         # NOTE: Recall that FID info is left in little-endian format
-        parent_fid_seq = []          # Eight-byte integer
+        parent_fid_seq = []  # Eight-byte integer
         # for i in [52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67]:
         for i in range(16):
-            parent_fid_seq.append(trusted_link_hex[i+j])
+            parent_fid_seq.append(trusted_link_hex[i + j])
         parent_fid_seq = ''.join(parent_fid_seq)
         j = j + 16
 
-        parent_fid_oid = []          # Four-byte integer
+        parent_fid_oid = []  # Four-byte integer
         for i in range(8):
-            parent_fid_oid.append(trusted_link_hex[i+j])
+            parent_fid_oid.append(trusted_link_hex[i + j])
         parent_fid_oid = ''.join(parent_fid_oid)
         j = j + 8
 
-        parent_fid_ver = []          # Four-byte integer
+        parent_fid_ver = []  # Four-byte integer
         for i in range(8):
-            parent_fid_ver.append(trusted_link_hex[i+j])
+            parent_fid_ver.append(trusted_link_hex[i + j])
         parent_fid_ver = ''.join(parent_fid_ver)
         j = j + 8
 
-        parent_fid = hex(int(parent_fid_seq, 16)) + ':' + hex(int(parent_fid_oid, 16)) + ':' + hex(int(parent_fid_ver, 16))
+        parent_fid = hex(int(parent_fid_seq, 16)) + ':' + hex(
+            int(parent_fid_oid, 16)) + ':' + hex(int(parent_fid_ver, 16))
 
-        filename_length = record_length - 18  # Remember that the link_ea_entry structure size is 18
+        # Remember that the link_ea_entry structure size is 18
+        filename_length = record_length - 18
         # istart = 84
         istart = j
         istop = istart + 2 * filename_length
@@ -151,19 +165,21 @@ def parse_link_info(trusted_link_hex):
         print('Filename length: {0:d}'.format(filename_length))
         print('Filename:        {0:s}'.format(filename))
 
-        results.append( {'pfid' : parent_fid, 'filename' : filename} )
+        results.append({'pfid': parent_fid, 'filename': filename})
 
-    return( results )
+    return results
+
 
 if __name__ == '__main__':
-
-    import fidinfo
     import binascii
 
-    trusted_link = '\337\361\352\021\002\000\000\000?\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\023\000\000\000\002\000\000\004\000\000\000\000\002\000\000\000\000a\000\024\000\000\000\002@\000\004\001\000\000\000\002\000\000\000\000aa'
+    trusted_link = '\337\361\352\021\002\000\000\000?\000\000\000\000\000\000\000\000\000\000\000' \
+                   + '\000\000\000\000\000\023\000\000\000\002\000\000\004\000\000\000\000\002\000' \
+                   + '\000\000\000a\000\024\000\000\000\002@\000\004\001\000\000\000\002\000\000\000' \
+                   + '\000aa'
 
-    trusted_link_hex = binascii.hexlify(trusted_link)
+    trusted_link_hexlified = binascii.hexlify(trusted_link)
 
-    results = parse_link_info( trusted_link_hex )
+    results0 = parse_link_info(trusted_link_hexlified)
 
-    print( results )
+    print(results0)
