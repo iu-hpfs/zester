@@ -62,7 +62,7 @@ def save_zfs_obj(zfs_cur, obj_dict, dataset_dicts):
                 obj_id, obj_dict.get('path', None), obj_dict.get('uid', None),
                 obj_dict.get('gid', None), obj_dict.get('ctime', None),
                 obj_dict.get('mtime', None), obj_dict.get('atime', None),
-                obj_dict.get('mode', None), obj_dict.get('objType', None),
+                obj_dict.get('mode', None), obj_dict.get('obj_type', None),
                 obj_dict.get('size', None), obj_dict.get('trusted.fid', None),
                 obj_dict.get('trusted.link', None),
                 obj_dict.get('trusted.lov', None),
@@ -309,7 +309,9 @@ def lookup(ost_dbs0, ost_idx, fid):
     #        (id, from_id, to_id, zfs_type) = fatzap_row
     zfsobj_cursor = ost_zfsobj_db.cursor()
     zfsobj_cursor.execute(
-        'SELECT id, path, uid, gid, ctime, mtime, atime, mode, objType, size, trustedFid, trustedLov, fid FROM zfsobj where fid like "' + partialfid + '"')
+        '''SELECT id, path, uid, gid, ctime, mtime, atime, mode, objType, size,
+        trustedFid, trustedLink, trustedLov, fid FROM zfsobj where fid like "'''
+        + partialfid + '"')
     all_row = zfsobj_cursor.fetchall()
     zfsobj_cursor.close()
 
@@ -320,7 +322,7 @@ def lookup(ost_dbs0, ost_idx, fid):
     size_of_stripes_on_ost = 0
     for zfsobj_row in all_row:
         (id0, path, uid, gid, ctime, mtime, atime, mode, objType, size,
-         trustedFid, trusedLov, fid) = zfsobj_row
+         trustedFid, trustedLink, trustedLov, fid) = zfsobj_row
         size_of_stripes_on_ost = size_of_stripes_on_ost + size
 
     return size_of_stripes_on_ost
@@ -345,7 +347,7 @@ def get_total_size(ost_dbs0, parsed_lov):
 # curs = conn.cursor()
 # names.create_names_table(conn)
 # names.insert_name(curs, dataset_id, fid, name, parent_fid)
-# conn.commmit()
+# conn.commit()
 # curs.close()
 # names.fid_to_path(conn, srch_fid):
 
@@ -358,13 +360,14 @@ def persist_objects(meta_db, mdt_dbs0, ost_dbs0):
     meta_cur = meta_db.cursor()
     for mdt_dataset_id, mdt_dataset_db in mdt_dbs0.items():
         query = '''SELECT id, path, uid, gid, ctime, mtime, atime, mode,
-                 objType, size, trustedFid, trustedLov, fid FROM zfsobj'''
+                 objType, size, trustedFid, trustedLink, trustedLov, fid FROM zfsobj'''
         mdt_cursor = mdt_dataset_db.cursor()
         mdt_cursor.execute(query)
         mdt_curr_row = mdt_cursor.fetchone()
         while mdt_curr_row is not None:
             (id0, path, uid, gid, ctime, mtime, atime, mode, objType, size,
-             trustedFid, trustedLov, fid) = mdt_curr_row
+             trustedFid, trustedLink, trustedLov, fid) = mdt_curr_row
+            print('objType, trustedLov = ', objType, trustedLov)
             if trustedLov is not None and objType == 'ZFS plain file':
                 count = count + 1
                 if count % 5000 == 0:
@@ -454,20 +457,20 @@ Options:
 '''
 
 
-# if __name__ == '__main__':
-#     if len(sys.argv) < 2:
-#         print(msg)
-#         sys.exit(1)
-#     if sys.argv[1] == '--parse':
-#         mdt_dbs, ost_dbs = parse(sys.argv[2:])
-#     else:
-#         mdt_dbs, ost_dbs = parse(sys.argv[1:])
-#         persist(zesterDbFname, mdt_dbs, ost_dbs)
-
-
-def main():
-    mdt_dbs0, ost_dbs0 = parse(['mdt_00.zdb'])
-
-
 if __name__ == '__main__':
-    main()
+    if len(sys.argv) < 2:
+        print(msg)
+        sys.exit(1)
+    if sys.argv[1] == '--parse':
+        mdt_dbs0, ost_dbs0 = parse(sys.argv[2:])
+    else:
+        mdt_dbs0, ost_dbs0 = parse(sys.argv[1:])
+        persist(zesterDbFname, mdt_dbs0, ost_dbs0)
+
+
+# def main():
+#     mdt_dbs0, ost_dbs0 = parse(['mdt_00.zdb'])
+#
+#
+# if __name__ == '__main__':
+#     main()
