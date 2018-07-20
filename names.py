@@ -2,6 +2,25 @@ import sqlite3
 import os
 import stat
 
+'''
+zfsobj   [zfsobj_id, uid, gid, ..., size, trusted_lov, trusted_link]
+name     [fid, name, parent_fid, pk(name, parent_fid), index(fid)]
+metadata [fid, uid, gid, ..., size]
+
+todo: make names match the above
+todo: integrate with zester
+
+get_entries_for_path(path):
+    fid=path_to_fid()
+    # recur into .. join on mode in metadata .. basically listdir
+
+get_entries_for_uid_in_path(uid, path):
+    entries = []
+    for fid in get_fids_for_uid(uid):
+       for path in fid_to_path(fid):
+          etnries.append(path)
+'''
+
 
 def create_names_table(conn):
     conn.execute('''
@@ -23,8 +42,9 @@ def drop_names_table(conn):
 
 
 def insert_name(curs, dataset_id, fid, name, parent_fid):
-    curs.execute("insert into name (dataset_id, fid, name, parent_fid) values (?, ?, ?, ?)",
-                 [dataset_id, fid, name, parent_fid]).fetchone()
+    curs.execute(
+        "insert into name (dataset_id, fid, name, parent_fid) values (?, ?, ?, ?)",
+        [dataset_id, fid, name, parent_fid]).fetchone()
 
 
 def populate_names(curs, dataset_id, parent_dir, parent_id):
