@@ -385,9 +385,9 @@ def persist_objects(meta_db, mdt_dbs0, ost_dbs0):
                 # fid = ''
                 size = get_total_size(ost_dbs0, parsed_lov)
                 type0 = 'f'  # todo: only regular files currently supported
-                metadata.save_metadata_obj(meta_cur, mdt_dataset_id, path, uid,
+                metadata.save_metadata_obj(meta_cur, fid, uid,
                                            gid, ctime, mtime, atime, mode,
-                                           type0, size, fid, trusted_link)
+                                           type0, size)
             mdt_curr_row = mdt_cursor.fetchone()
         mdt_cursor.close()
     print('total ' + str(count))
