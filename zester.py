@@ -128,19 +128,37 @@ def parse_zdb(id0, inputfile, zfsobj_db=None, dataset_dicts=None):
             if line.startswith("Dirty time logs:"):
                 # todo: parse and store?
                 dataset_name = None
+            if line.startswith("Dataset mos [META]"):
+                datasetName = None
             if line.startswith("Dataset"):
-                if dataset_name is not None:
-                    raise Exception('parseZdb',
-                                    'unexpected mulitple datasets in '
-                                    'ZDB dump')
                 dataset_name = line.split(" ")[1]
-                print("dataset_name: " + dataset_name + " id: " + str(id0))
+                if '/' not in dataset_name:
+                    dataset_name = None
+            # if line.startswith("Dataset"):
+            #     if dataset_name is not None:
+            #         raise Exception('parseZdb',
+            #                         'unexpected mulitple datasets in '
+            #                         'ZDB dump')
+                else:
+                    print("dataset_name: " + dataset_name + " id: " + str(id0))
                 if dataset_dicts is not None:
                     dataset_dicts[id0] = {}
-            # does this line starts a new object section?
-            zfs_obj_match = (
-                    line == '    Object  lvl   iblk   dblk  dsize  lsize   %full  type\n')
-            # if we see a new object line, clear and start parsing this object.
+
+            # Does this line starts a new object section?
+            #
+            # Work out whether the dump objects include the newer schema, with 'dnsize' or not,
+            # and then do the right thing.
+            #zfs 0.6.4
+            zfs_obj_match_old = (line == '    Object  lvl   iblk   dblk  dsize  lsize   %full  type\n')
+            #zfs 0.7.5
+            zfs_obj_match_new = (line == '    Object  lvl   iblk   dblk  dsize  dnsize  lsize   %full  type\n')
+
+            if zfs_obj_match_old:
+                zfs_obj_match = zfs_obj_match_old
+            else:
+                zfs_obj_match = zfs_obj_match_new
+
+            # If we see a new object line, clear and start parsing this object.
             if dataset_name and zfs_obj_match:
                 if obj_dict is not None:
                     save_zfs_obj(zfsobj_cur, obj_dict, dataset_dicts)
@@ -153,9 +171,16 @@ def parse_zdb(id0, inputfile, zfsobj_db=None, dataset_dicts=None):
                     show_timing(count, start, ts)
                 in_fat_zap = False
                 data_line = inputfile.readline().rstrip()
-                zfs_data = data_line.split(None, 7)
-                obj_id = int(zfs_data[0])
-                obj_type = zfs_data[7]
+
+                if zfs_obj_match_old:                       # without 'dnsize' in line, need to split 7 times
+                    zfs_data = data_line.split(None, 7)
+                    obj_id = int(zfs_data[0])
+                    obj_type = zfs_data[7]
+                elif zfs_obj_match_new:
+                    zfs_data = data_line.split(None, 8)     # with 'dnsize' in line, need to split 8 times
+                    obj_id = int(zfs_data[0])
+                    obj_type = zfs_data[8]
+
                 obj_dict = {'id': id0, 'obj_id': obj_id, 'obj_type': obj_type}
             elif in_fat_zap:
                 pass
@@ -173,7 +198,15 @@ def parse_zdb(id0, inputfile, zfsobj_db=None, dataset_dicts=None):
                 #                                     'type': type0}
                 #     else:
                 #         pass
-            #                        print('Not saving info for type {0:s}.'.format(type))
+                #                        print('Not saving info for type {0:s}.'.format(type))
+            # Saw this in 0.7.5-based 'zdb -dddd' output on pool; need to skip these four lines
+            elif 'Dnode slots:' in line:
+                print( "Saw Dnode slots line" )
+                # Occurs at the end of the dataset info:
+                # skip next 3 lines
+                inputfile.readline()
+                inputfile.readline()
+                inputfile.readline()
             elif dataset_name and (obj_id is not None) and (
                     tabs_at_beginning(line) == 1):
                 stripped = line[1:].rstrip('\n')
@@ -374,7 +407,11 @@ def persist_objects(meta_db, mdt_dbs0, ost_dbs0):
                     meta_cur = meta_db.cursor()
                     ts = time.clock()
                     show_timing(count, start, ts)
-                path = path.lstrip('/ROOT')
+
+                # In 0.7.5, it seems that zdb is not emitting path values in mdt datasets. So, check for path != None...
+                if path is not None:
+                    path = path.lstrip('/ROOT')
+
                 parsed_lov = lovinfo.parseLovInfo(
                     binascii.hexlify(str(fidinfo.decoder(trusted_lov))))
                 # todo: MDT FID decoding currently experimental, add tests
