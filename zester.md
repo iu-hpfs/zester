@@ -1,3 +1,11 @@
+'''
+zfsobj   [zfsobj_id, uid, gid, ..., size, trusted_lov, trusted_link]
+name     [fid, name, parent_fid, pk(name, parent_fid), index(fid)]
+metadata [fid, uid, gid, ..., size]
+'''
+
+#     mdt_dbs0, ost_dbs0 = parse(['mdt_00.zdb'])
+
 ## tables
 
 metadata

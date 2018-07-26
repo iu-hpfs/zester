@@ -12,17 +12,37 @@
 # Systems group in the Pervasive Technology Institute at Indiana University.
 
 import binascii
-import cPickle
 import fileinput
 import sqlite3
 import sys
 import time
-from datetime import datetime
-from time import mktime
 
 import fidinfo
+import linkinfo
 import lovinfo
 import metadata
+import names
+import util
+
+
+# todo: implement these
+
+def get_fids_for_uid(uid):
+    raise NotImplementedError
+
+
+def get_entries_for_path(path):
+    # fid=path_to_fid()
+    # recur into .. join on mode in metadata .. basically listdir
+    raise NotImplementedError
+
+
+def get_entries_for_uid_in_path(uid, path):
+    entries = []
+    for fid in get_fids_for_uid(uid):
+        for path in names.fid_to_path(fid):
+            entries.append(path)
+    return entries
 
 
 # zfs-db____
@@ -33,16 +53,23 @@ def open_zfsobj_db(zfsobj_db_fame):
     return zfsobj_db
 
 
+'''
+zfsobj   [zfsobj_id, uid, gid, ..., size, trusted_lov, trusted_link]
+name     [fid, name, parent_fid, pk(name, parent_fid), index(fid)]
+metadata [fid, uid, gid, ..., size]
+'''
+
+
 def setup_zfsobj_db(zfsobj_db_fame):
     zfsobj_db = open_zfsobj_db(zfsobj_db_fame)
     zfsobj_cur = zfsobj_db.cursor()
     zfsobj_cur.execute('drop index if exists zfsobj_trustedlov_index')
     zfsobj_cur.execute('DROP TABLE IF EXISTS zfsobj')
-    zfsobj_cur.execute('''CREATE TABLE zfsobj (id INTEGER PRIMARY KEY, path TEXT,
+    zfsobj_cur.execute('''CREATE TABLE zfsobj (id INTEGER PRIMARY KEY,
                         uid INTEGER, gid INTEGER, ctime INTEGER, mtime INTEGER, 
-                        atime INTEGER, mode INTEGER, obj_type CHAR(1), 
-                        size INTEGER, trusted_fid TEXT, trusted_link TEXT, trusted_lov TEXT,
-                        objects TEXT, fid TEXT)''')
+                        atime INTEGER, mode INTEGER, obj_type TEXT, size INTEGER, 
+                        fid TEXT, trusted_link TEXT, trusted_lov TEXT)
+                        ''')
     zfsobj_cur.close()
     return zfsobj_db
 
@@ -54,58 +81,17 @@ def save_zfs_obj(zfs_cur, obj_dict, dataset_dicts):
         dataset_dicts[id0][obj_id] = obj_dict
     if zfs_cur is not None:
         cmd = '''INSERT INTO [zfsobj] 
-                 (id, path, uid, gid, ctime, mtime, atime, mode, obj_type, size,
-                 trusted_fid, trusted_link, trusted_lov, objects, fid)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'''
+                 (id, uid, gid, ctime, mtime, atime, mode, obj_type, size,
+                 fid, trusted_link, trusted_lov)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'''
         if True:  # 'trusted.fid' in obj_dict or 'trusted.lov' in obj_dict:
             zfs_cur.execute(cmd, (
-                obj_id, obj_dict.get('path', None), obj_dict.get('uid', None),
-                obj_dict.get('gid', None), obj_dict.get('ctime', None),
-                obj_dict.get('mtime', None), obj_dict.get('atime', None),
-                obj_dict.get('mode', None), obj_dict.get('obj_type', None),
-                obj_dict.get('size', None), obj_dict.get('trusted.fid', None),
-                obj_dict.get('trusted.link', None),
-                obj_dict.get('trusted.lov', None),
-                obj_dict.get('objects', None), obj_dict.get('fid', None),))
-
-
-# utility code
-
-def show_timing(count, start, ts):
-    tot_per_sec = int(count / (ts - start))
-    secs_in_day = 86400
-    tot_per_day = secs_in_day * tot_per_sec
-    if tot_per_day > 0:
-        print(str(count) + " total (" + str(tot_per_sec) + "/s)")
-    sys.stdout.flush()
-
-
-def serialize(filename, obj):
-    pickle_file = open(filename, 'wb')
-    cPickle.dump(obj, pickle_file)
-    pickle_file.close()
-
-
-def format_time_in_seconds(datetime_object):
-    return int(mktime(
-        datetime.strptime(datetime_object, '%a %b %d %H:%M:%S %Y').timetuple()))
-
-
-def deserialize(filename):
-    pickle_file = open(filename, 'rb')
-    obj = cPickle.load(pickle_file)
-    pickle_file.close()
-    return obj
-
-
-def tabs_at_beginning(line):
-    return len(line) - len(line.lstrip('\t'))
-
-
-def write_object(filename, obj):
-    input_filename = open(filename, "w")
-    input_filename.write(obj)
-    input_filename.close()
+                obj_id, obj_dict.get('uid', None), obj_dict.get('gid', None),
+                obj_dict.get('ctime', None), obj_dict.get('mtime', None),
+                obj_dict.get('atime', None), obj_dict.get('mode', None),
+                obj_dict.get('obj_type', None), obj_dict.get('size', None),
+                obj_dict.get('fid', None), obj_dict.get('trusted.link', None),
+                obj_dict.get('trusted.lov', None)))
 
 
 # parsing____
@@ -124,9 +110,9 @@ def parse_zdb(id0, inputfile, zfsobj_db=None, dataset_dicts=None):
     try:
         for line in inputfile:
             if line.startswith("Metaslabs:"):
-                dataset_name = None  # todo: parse and store?
+                dataset_name = None  # todo: (old) parse and store?
             if line.startswith("Dirty time logs:"):
-                # todo: parse and store?
+                # todo: (old) parse and store?
                 dataset_name = None
             if line.startswith("Dataset mos [META]"):
                 datasetName = None
@@ -168,7 +154,7 @@ def parse_zdb(id0, inputfile, zfsobj_db=None, dataset_dicts=None):
                         zfsobj_db.commit()
                         zfsobj_cur = zfsobj_db.cursor()
                     ts = time.clock()
-                    show_timing(count, start, ts)
+                    util.show_timing(count, start, ts)
                 in_fat_zap = False
                 data_line = inputfile.readline().rstrip()
 
@@ -183,7 +169,6 @@ def parse_zdb(id0, inputfile, zfsobj_db=None, dataset_dicts=None):
 
                 obj_dict = {'id': id0, 'obj_id': obj_id, 'obj_type': obj_type}
             elif in_fat_zap:
-                pass
                 # if (tabs_at_beginning(line) == 2) and (line[2].isdigit()) and (
                 #         '=' in line) and ('type: ' in line):
                 #     chopped = line.split('(type: ')
@@ -198,6 +183,8 @@ def parse_zdb(id0, inputfile, zfsobj_db=None, dataset_dicts=None):
                 #                                     'type': type0}
                 #     else:
                 #         pass
+                #  print('Not saving info for type {0:s}.'.format(type))
+                pass
                 #                        print('Not saving info for type {0:s}.'.format(type))
             # Saw this in 0.7.5-based 'zdb -dddd' output on pool; need to skip these four lines
             elif 'Dnode slots:' in line:
@@ -208,7 +195,7 @@ def parse_zdb(id0, inputfile, zfsobj_db=None, dataset_dicts=None):
                 inputfile.readline()
                 inputfile.readline()
             elif dataset_name and (obj_id is not None) and (
-                    tabs_at_beginning(line) == 1):
+                    util.tabs_at_beginning(line) == 1):
                 stripped = line[1:].rstrip('\n')
                 if stripped.startswith(" "):
                     raise Exception("mixed-tab/space-indenting, "
@@ -227,16 +214,16 @@ def parse_zdb(id0, inputfile, zfsobj_db=None, dataset_dicts=None):
                     # obj_dict['unkObjectType'] = True
                     pass
                 elif stripped.startswith("atime	"):
-                    obj_dict['atime'] = format_time_in_seconds(
+                    obj_dict['atime'] = util.format_time_in_seconds(
                         stripped.split("atime	")[1])
                 elif stripped.startswith("mtime	"):
-                    obj_dict['mtime'] = format_time_in_seconds(
+                    obj_dict['mtime'] = util.format_time_in_seconds(
                         stripped.split("mtime	")[1])
                 elif stripped.startswith("ctime	"):
-                    obj_dict['ctime'] = format_time_in_seconds(
+                    obj_dict['ctime'] = util.format_time_in_seconds(
                         stripped.split("ctime	")[1])
                 elif stripped.startswith("crtime	"):
-                    obj_dict['crtime'] = format_time_in_seconds(
+                    obj_dict['crtime'] = util.format_time_in_seconds(
                         stripped.split("crtime	")[1])
                 elif stripped.startswith("rdev	"):
                     pass
@@ -249,10 +236,9 @@ def parse_zdb(id0, inputfile, zfsobj_db=None, dataset_dicts=None):
                         name = pair[0]
                         if name == 'trusted.fid':
                             octal_fid = pair[1]
-                            obj_dict['trusted.fid'] = octal_fid
                             obj_dict['fid'] = str(fidinfo.decode_fid(octal_fid))
                         if name == 'trusted.link':
-                            trusted_link = obj_dict['trusted.link'] = pair[1]
+                            obj_dict['trusted.link'] = pair[1]
                         if name == 'trusted.lov':
                             trusted_lov = obj_dict['trusted.lov'] = pair[1]
                             # todo: eval decoding fid in later pass
@@ -320,6 +306,7 @@ def parse_zdb(id0, inputfile, zfsobj_db=None, dataset_dicts=None):
 #    ost_zfsobj_db = ost_dbs[ostIdx]
 #    query = 'select id, from_id, to_id, zfs_type from fatzap where ' \
 #            'from_id=' + str(objId) + ' and zfs_type="Regular File"'
+# todo: switch to new methodology
 def lookup(ost_dbs0, ost_idx, fid):
     ost_zfsobj_db = ost_dbs0[ost_idx]
     # fid.rsplit(':',1)[0] trims off the version, which is different for each
@@ -341,21 +328,20 @@ def lookup(ost_dbs0, ost_idx, fid):
     #    for fatzap_row in all_fatzap:
     #        (id, from_id, to_id, zfs_type) = fatzap_row
     zfsobj_cursor = ost_zfsobj_db.cursor()
-    zfsobj_cursor.execute(
-        '''SELECT id, path, uid, gid, ctime, mtime, atime, mode, obj_type, size,
-        trusted_fid, trusted_link, trusted_lov, fid FROM zfsobj where fid like "'''
-        + partialfid + '"')
+    zfsobj_cursor.execute('''SELECT id, uid, gid, ctime, mtime, atime, mode, size,
+        fid, trusted_link, trusted_lov FROM zfsobj where fid like "''' + partialfid + '"')
     all_row = zfsobj_cursor.fetchall()
     zfsobj_cursor.close()
 
     if len(all_row) > 1:
-        print('More than one partial fid match to [', partialfid,
-              '] in ost index', ost_idx)
+        print(
+        'More than one partial fid match to [', partialfid, '] in ost index',
+        ost_idx)
 
     size_of_stripes_on_ost = 0
     for zfsobj_row in all_row:
-        (id0, path, uid, gid, ctime, mtime, atime, mode, obj_type, size,
-         trusted_fid, trusted_link, trusted_lov, fid) = zfsobj_row
+        (id0, uid, gid, ctime, mtime, atime, mode, size, fid, trusted_link,
+         trusted_lov) = zfsobj_row
         size_of_stripes_on_ost = size_of_stripes_on_ost + size
 
     return size_of_stripes_on_ost
@@ -376,6 +362,15 @@ def get_total_size(ost_dbs0, parsed_lov):
     return total_size
 
 
+def commit_meta_db(count, meta_cur, meta_db, start):
+    if count % 5000 == 0:
+        meta_db.commit()
+        meta_cur = meta_db.cursor()
+        ts = time.clock()
+        util.show_timing(count, start, ts)
+    return meta_cur
+
+
 # conn = sqlite3.connect(":memory:")
 # curs = conn.cursor()
 # names.create_names_table(conn)
@@ -387,44 +382,63 @@ def get_total_size(ost_dbs0, parsed_lov):
 # linkinfo.parse_link_info(trusted_link_hex):
 # -> [{'pfid': '0x200000400:0x2:0x0', 'filename': 'a'}, {'pfid': '0x240000401:0x2:0
 
+def persist_names(name_db, mdt_dbs0):
+    count = 0
+    start = time.clock()
+    name_cur = name_db.cursor()
+    for mdt_dataset_id, mdt_dataset_db in mdt_dbs0.items():
+        query = '''SELECT fid, trusted_link from zfsobj'''
+        mdt_cursor = mdt_dataset_db.cursor()
+        mdt_cursor.execute(query)
+        mdt_curr_row = mdt_cursor.fetchone()
+        while mdt_curr_row is not None:
+            (fid, trusted_link) = mdt_curr_row
+            if trusted_link is not None:
+                try:
+                    li_dicts = linkinfo.parse_link_info(trusted_link)
+                    for li_dict in li_dicts:
+                        names.insert_name(name_cur, fid, li_dict['filename'],
+                                          li_dict['pfid'])
+                except TypeError:
+                    # todo: make sure this is normal
+                    pass
+                except ValueError:
+                   # todo: make sure this is normal
+                    pass
+            mdt_curr_row = mdt_cursor.fetchone()
+        mdt_cursor.close()
+        print('total ' + str(count))
+        print('comitting')
+        name_db.commit()
+        print('closing')
+        name_cur.close()
+        print('done')
+
+
 def persist_objects(meta_db, mdt_dbs0, ost_dbs0):
     count = 0
     start = time.clock()
     meta_cur = meta_db.cursor()
     for mdt_dataset_id, mdt_dataset_db in mdt_dbs0.items():
-        query = '''SELECT id, path, uid, gid, ctime, mtime, atime, mode,
-                 obj_type, size, trusted_fid, trusted_link, trusted_lov, fid FROM zfsobj'''
+        query = '''SELECT id, uid, gid, ctime, mtime, atime, mode, obj_type,
+                  size, fid, trusted_link, trusted_lov FROM zfsobj'''
         mdt_cursor = mdt_dataset_db.cursor()
         mdt_cursor.execute(query)
         mdt_curr_row = mdt_cursor.fetchone()
         while mdt_curr_row is not None:
-            (id0, path, uid, gid, ctime, mtime, atime, mode, obj_type, size,
-             trusted_fid, trusted_link, trusted_lov, fid) = mdt_curr_row
-            if trusted_lov is not None and obj_type == 'ZFS plain file':
+            (id0, uid, gid, ctime, mtime, atime, mode, obj_type, size, fid,
+             trusted_link, trusted_lov) = mdt_curr_row
+            # todo: had to add obj_type back to zfsobj, re-evaluate later
+            if trusted_lov and obj_type == 'ZFS plain file' is not None:
                 count = count + 1
-                if count % 5000 == 0:
-                    meta_db.commit()
-                    meta_cur = meta_db.cursor()
-                    ts = time.clock()
-                    show_timing(count, start, ts)
-
-                # In 0.7.5, it seems that zdb is not emitting path values in mdt datasets. So, check for path != None...
-                if path is not None:
-                    path = path.lstrip('/ROOT')
+                meta_cur = commit_meta_db(count, meta_cur, meta_db, start)
 
                 parsed_lov = lovinfo.parseLovInfo(
                     binascii.hexlify(str(fidinfo.decoder(trusted_lov))))
-                # todo: MDT FID decoding currently experimental, add tests
-                # fid = '0x' + parsed_lov['lmm_seq'] + ':0x' + parsed_lov['lmm_object_id'] + ':0x0'
-                fid = hex(int(parsed_lov['lmm_seq'], 16)) + ':' + hex(
-                    int(parsed_lov['lmm_object_id'], 16)) + ':0x0'
-
-                # fid = ''
                 size = get_total_size(ost_dbs0, parsed_lov)
-                type0 = 'f'  # todo: only regular files currently supported
-                metadata.save_metadata_obj(meta_cur, fid, uid,
-                                           gid, ctime, mtime, atime, mode,
-                                           type0, size)
+
+                metadata.save_metadata_obj(meta_cur, fid, uid, gid, ctime,
+                                           mtime, atime, mode, size)
             mdt_curr_row = mdt_cursor.fetchone()
         mdt_cursor.close()
     print('total ' + str(count))
@@ -435,12 +449,19 @@ def persist_objects(meta_db, mdt_dbs0, ost_dbs0):
     print('done')
 
 
-def persist(zester_db_fname, mdt_dbs0, ost_dbs0):
+def persist(metadata_db_fname, name_db_fname, mdt_dbs0, ost_dbs0):
     print('persisting objects')
-    meta_db = sqlite3.connect(zester_db_fname)
+    meta_db = sqlite3.connect(metadata_db_fname)
     meta_db.text_factory = str
     metadata.setup_metadata_db(meta_db)
     persist_objects(meta_db, mdt_dbs0, ost_dbs0)
+
+    print('persisting names')
+    name_db = sqlite3.connect(name_db_fname)
+    name_db.text_factory = str
+    names.setup_name_table(name_db)
+    persist_names(meta_db, mdt_dbs0)
+
     print('bulding metadata indexes')
     meta_cur = meta_db.cursor()
     meta_db.commit()
@@ -470,7 +491,7 @@ def parse(file_paths):
         #                           '(from_id)')
         zfsobj_db.commit()
         ts = time.clock()
-        show_timing(count, start, ts)
+        util.show_timing(count, start, ts)
         if lustre_type == 'mdt':
             mdt_dbs0[id0] = zfsobj_db
         elif lustre_type == 'ost':
@@ -482,7 +503,6 @@ def parse(file_paths):
 
 # main____
 
-zesterDbFname = 'metadata.db'
 
 msg = '''Usage: zester [OPTION]... mdt_<mdtidx>.zdb ... ost_<ostidx>.zdb ...
 Parse MDT and ZDB dumps into a SQLite representation then assemble into a
@@ -493,20 +513,16 @@ Options:
 '''
 
 
-if __name__ == '__main__':
+def main():
     if len(sys.argv) < 2:
         print(msg)
         sys.exit(1)
     if sys.argv[1] == '--parse':
-        mdt_dbs0, ost_dbs0 = parse(sys.argv[2:])
+        parse(sys.argv[2:])
     else:
         mdt_dbs0, ost_dbs0 = parse(sys.argv[1:])
-        persist(zesterDbFname, mdt_dbs0, ost_dbs0)
+        persist('metadata.db', 'name.db', mdt_dbs0, ost_dbs0)
 
 
-# def main():
-#     mdt_dbs0, ost_dbs0 = parse(['mdt_00.zdb'])
-#
-#
-# if __name__ == '__main__':
-#     main()
+if __name__ == '__main__':
+    main()
