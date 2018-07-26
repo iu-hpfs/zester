@@ -67,8 +67,8 @@ def setup_zfsobj_db(zfsobj_db_fame):
     zfsobj_cur.execute('DROP TABLE IF EXISTS zfsobj')
     zfsobj_cur.execute('''CREATE TABLE zfsobj (id INTEGER PRIMARY KEY,
                         uid INTEGER, gid INTEGER, ctime INTEGER, mtime INTEGER, 
-                        atime INTEGER, mode INTEGER, size INTEGER, 
-                        trusted_fid TEXT, trusted_link TEXT, trusted_lov TEXT)
+                        atime INTEGER, mode INTEGER, obj_type TEXT, size INTEGER, 
+                        fid TEXT, trusted_link TEXT, trusted_lov TEXT)
                         ''')
     zfsobj_cur.close()
     return zfsobj_db
@@ -81,16 +81,16 @@ def save_zfs_obj(zfs_cur, obj_dict, dataset_dicts):
         dataset_dicts[id0][obj_id] = obj_dict
     if zfs_cur is not None:
         cmd = '''INSERT INTO [zfsobj] 
-                 (id, uid, gid, ctime, mtime, atime, mode, size,
-                 trusted_fid, trusted_link, trusted_lov)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'''
+                 (id, uid, gid, ctime, mtime, atime, mode, obj_type, size,
+                 fid, trusted_link, trusted_lov)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'''
         if True:  # 'trusted.fid' in obj_dict or 'trusted.lov' in obj_dict:
             zfs_cur.execute(cmd, (
                 obj_id, obj_dict.get('uid', None), obj_dict.get('gid', None),
                 obj_dict.get('ctime', None), obj_dict.get('mtime', None),
                 obj_dict.get('atime', None), obj_dict.get('mode', None),
-                obj_dict.get('size', None), obj_dict.get('trusted.fid', None),
-                obj_dict.get('trusted.link', None),
+                obj_dict.get('obj_type', None), obj_dict.get('size', None),
+                obj_dict.get('fid', None), obj_dict.get('trusted.link', None),
                 obj_dict.get('trusted.lov', None)))
 
 
@@ -202,10 +202,9 @@ def parse_zdb(id0, inputfile, zfsobj_db=None, dataset_dicts=None):
                         name = pair[0]
                         if name == 'trusted.fid':
                             octal_fid = pair[1]
-                            obj_dict['trusted.fid'] = octal_fid
                             obj_dict['fid'] = str(fidinfo.decode_fid(octal_fid))
                         if name == 'trusted.link':
-                            trusted_link = obj_dict['trusted.link'] = pair[1]
+                            obj_dict['trusted.link'] = pair[1]
                         if name == 'trusted.lov':
                             trusted_lov = obj_dict['trusted.lov'] = pair[1]
                             # todo: eval decoding fid in later pass
@@ -296,7 +295,7 @@ def lookup(ost_dbs0, ost_idx, fid):
     #        (id, from_id, to_id, zfs_type) = fatzap_row
     zfsobj_cursor = ost_zfsobj_db.cursor()
     zfsobj_cursor.execute('''SELECT id, uid, gid, ctime, mtime, atime, mode, size,
-        trusted_fid, trusted_link, trusted_lov FROM zfsobj where fid like "''' + partialfid + '"')
+        fid, trusted_link, trusted_lov FROM zfsobj where fid like "''' + partialfid + '"')
     all_row = zfsobj_cursor.fetchall()
     zfsobj_cursor.close()
 
@@ -306,8 +305,8 @@ def lookup(ost_dbs0, ost_idx, fid):
 
     size_of_stripes_on_ost = 0
     for zfsobj_row in all_row:
-        (id0, path, uid, gid, ctime, mtime, atime, mode, obj_type, size,
-         trusted_fid, trusted_link, trusted_lov, fid) = zfsobj_row
+        (id0, uid, gid, ctime, mtime, atime, mode, size, fid, trusted_link,
+         trusted_lov) = zfsobj_row
         size_of_stripes_on_ost = size_of_stripes_on_ost + size
 
     return size_of_stripes_on_ost
@@ -353,31 +352,25 @@ def persist_objects(meta_db, mdt_dbs0, ost_dbs0):
     start = time.clock()
     meta_cur = meta_db.cursor()
     for mdt_dataset_id, mdt_dataset_db in mdt_dbs0.items():
-        query = '''SELECT id, uid, gid, ctime, mtime, atime, mode,
-                  size, trusted_fid, trusted_link, trusted_lov FROM zfsobj'''
+        query = '''SELECT id, uid, gid, ctime, mtime, atime, mode, obj_type,
+                  size, fid, trusted_link, trusted_lov FROM zfsobj'''
         mdt_cursor = mdt_dataset_db.cursor()
         mdt_cursor.execute(query)
         mdt_curr_row = mdt_cursor.fetchone()
         while mdt_curr_row is not None:
-            (id0, uid, gid, ctime, mtime, atime, mode, size, trusted_fid,
+            (id0, uid, gid, ctime, mtime, atime, mode, obj_type, size, fid,
              trusted_link, trusted_lov) = mdt_curr_row
-            if trusted_lov is not None:
-                # todo: was "and obj_type == 'ZFS plain file'", need to add obj_type back?
+            # todo: had to add obj_type back to zfsobj, re-evaluate later
+            if trusted_lov and obj_type == 'ZFS plain file' is not None:
                 count = count + 1
                 meta_cur = commit_meta_db(count, meta_cur, meta_db, start)
 
-                # todo: was 'path = path.lstrip('/ROOT')' -- think through how root dir works in new methodology
-
                 parsed_lov = lovinfo.parseLovInfo(
                     binascii.hexlify(str(fidinfo.decoder(trusted_lov))))
-                # todo: (old) MDT FID decoding currently experimental, add tests
-                # fid = '0x' + parsed_lov['lmm_seq'] + ':0x' + parsed_lov['lmm_object_id'] + ':0x0'
-                fid = hex(int(parsed_lov['lmm_seq'], 16)) + ':' + hex(
-                    int(parsed_lov['lmm_object_id'], 16)) + ':0x0'
-
-                # fid = ''
                 size = get_total_size(ost_dbs0, parsed_lov)
-                metadata.save_metadata_obj(meta_cur, fid, uid, gid, ctime, mtime, atime, mode, size)
+
+                metadata.save_metadata_obj(meta_cur, fid, uid, gid, ctime,
+                                           mtime, atime, mode, size)
             mdt_curr_row = mdt_cursor.fetchone()
         mdt_cursor.close()
     print('total ' + str(count))
