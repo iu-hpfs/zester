@@ -300,8 +300,9 @@ def lookup(ost_dbs0, ost_idx, fid):
     zfsobj_cursor.close()
 
     if len(all_row) > 1:
-        print('More than one partial fid match to [', partialfid,
-              '] in ost index', ost_idx)
+        print(
+        'More than one partial fid match to [', partialfid, '] in ost index',
+        ost_idx)
 
     size_of_stripes_on_ost = 0
     for zfsobj_row in all_row:
@@ -348,6 +349,8 @@ def commit_meta_db(count, meta_cur, meta_db, start):
 # -> [{'pfid': '0x200000400:0x2:0x0', 'filename': 'a'}, {'pfid': '0x240000401:0x2:0
 
 def persist_names(name_db, mdt_dbs0):
+    count = 0
+    start = time.clock()
     name_cur = name_db.cursor()
     for mdt_dataset_id, mdt_dataset_db in mdt_dbs0.items():
         query = '''SELECT fid, trusted_link from zfsobj'''
@@ -356,9 +359,26 @@ def persist_names(name_db, mdt_dbs0):
         mdt_curr_row = mdt_cursor.fetchone()
         while mdt_curr_row is not None:
             (fid, trusted_link) = mdt_curr_row
-            for li_dict in linkinfo.parse_link_info(trusted_link):
-                names.insert_name(name_cur, fid, li_dict['filename'],
-                                  li_dict['pfid'])
+            if trusted_link is not None:
+                try:
+                    li_dicts = linkinfo.parse_link_info(trusted_link)
+                    for li_dict in li_dicts:
+                        names.insert_name(name_cur, fid, li_dict['filename'],
+                                          li_dict['pfid'])
+                except TypeError:
+                    # todo: make sure this is normal
+                    pass
+                except ValueError:
+                   # todo: make sure this is normal
+                    pass
+            mdt_curr_row = mdt_cursor.fetchone()
+        mdt_cursor.close()
+        print('total ' + str(count))
+        print('comitting')
+        name_db.commit()
+        print('closing')
+        name_cur.close()
+        print('done')
 
 
 def persist_objects(meta_db, mdt_dbs0, ost_dbs0):
@@ -405,8 +425,8 @@ def persist(metadata_db_fname, name_db_fname, mdt_dbs0, ost_dbs0):
     print('persisting names')
     name_db = sqlite3.connect(name_db_fname)
     name_db.text_factory = str
-    names.create_names_table(name_db)
-    persist_names(meta_db, mdt_dbs0, ost_dbs0)
+    names.setup_name_table(name_db)
+    persist_names(meta_db, mdt_dbs0)
 
     print('bulding metadata indexes')
     meta_cur = meta_db.cursor()

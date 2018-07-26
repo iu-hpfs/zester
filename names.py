@@ -3,7 +3,11 @@ import os
 import stat
 
 
-def setup_name_table(conn):
+def drop_name_table(conn):
+    conn.execute("drop table if exists name")
+
+
+def create_name_table(conn):
     conn.execute('''
         create table name (
           fid        text,
@@ -15,8 +19,9 @@ def setup_name_table(conn):
     conn.execute('create index name_p on name (parent_fid)')
 
 
-def drop_names_table(conn):
-    conn.execute("drop table name")
+def setup_name_table(conn):
+    drop_name_table(conn)
+    create_name_table(conn)
 
 
 def insert_name(curs, fid, name, parent_fid):
