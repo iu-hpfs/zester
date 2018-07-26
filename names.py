@@ -2,6 +2,7 @@ import sqlite3
 import os
 import stat
 
+
 def create_names_table(conn):
     conn.execute('''
         create table name (
@@ -19,8 +20,7 @@ def drop_names_table(conn):
 
 
 def insert_name(curs, fid, name, parent_fid):
-    curs.execute(
-        "insert into name (fid, name, parent_fid) values (?, ?, ?)",
+    curs.execute("insert into name (fid, name, parent_fid) values (?, ?, ?)",
         [fid, name, parent_fid]).fetchone()
 
 

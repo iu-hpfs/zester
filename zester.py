@@ -21,11 +21,37 @@ from datetime import datetime
 from time import mktime
 
 import fidinfo
+import linkinfo
 import lovinfo
 import metadata
+import names
 
 
-# ____
+# todo: implement these
+
+def get_fids_for_uid():
+    raise NotImplementedError
+
+
+def get_fids_for_uid(uid):
+    raise NotImplementedError
+
+
+def get_entries_for_path(path):
+    # fid=path_to_fid()
+    # recur into .. join on mode in metadata .. basically listdir
+    raise NotImplementedError
+
+
+def get_entries_for_uid_in_path(uid, path):
+    entries = []
+    for fid in get_fids_for_uid(uid):
+        for path in names.fid_to_path(fid):
+            entries.append(path)
+    return entries
+
+
+# zfs-db____
 
 def open_zfsobj_db(zfsobj_db_fame):
     zfsobj_db = sqlite3.connect(zfsobj_db_fame)
@@ -33,16 +59,23 @@ def open_zfsobj_db(zfsobj_db_fame):
     return zfsobj_db
 
 
+'''
+zfsobj   [zfsobj_id, uid, gid, ..., size, trusted_lov, trusted_link]
+name     [fid, name, parent_fid, pk(name, parent_fid), index(fid)]
+metadata [fid, uid, gid, ..., size]
+'''
+
+
 def setup_zfsobj_db(zfsobj_db_fame):
     zfsobj_db = open_zfsobj_db(zfsobj_db_fame)
     zfsobj_cur = zfsobj_db.cursor()
     zfsobj_cur.execute('drop index if exists zfsobj_trustedlov_index')
     zfsobj_cur.execute('DROP TABLE IF EXISTS zfsobj')
-    zfsobj_cur.execute('''CREATE TABLE zfsobj (id INTEGER PRIMARY KEY, path TEXT,
+    zfsobj_cur.execute('''CREATE TABLE zfsobj (id INTEGER PRIMARY KEY,
                         uid INTEGER, gid INTEGER, ctime INTEGER, mtime INTEGER, 
-                        atime INTEGER, mode INTEGER, obj_type CHAR(1), 
-                        size INTEGER, trusted_fid TEXT, trusted_link TEXT, trusted_lov TEXT,
-                        objects TEXT, fid TEXT)''')
+                        atime INTEGER, mode INTEGER, size INTEGER, 
+                        trusted_fid TEXT, trusted_link TEXT, trusted_lov TEXT)
+                        ''')
     zfsobj_cur.close()
     return zfsobj_db
 
@@ -54,19 +87,17 @@ def save_zfs_obj(zfs_cur, obj_dict, dataset_dicts):
         dataset_dicts[id0][obj_id] = obj_dict
     if zfs_cur is not None:
         cmd = '''INSERT INTO [zfsobj] 
-                 (id, path, uid, gid, ctime, mtime, atime, mode, obj_type, size,
-                 trusted_fid, trusted_link, trusted_lov, objects, fid)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'''
+                 (id, uid, gid, ctime, mtime, atime, mode, size,
+                 trusted_fid, trusted_link, trusted_lov)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'''
         if True:  # 'trusted.fid' in obj_dict or 'trusted.lov' in obj_dict:
             zfs_cur.execute(cmd, (
-                obj_id, obj_dict.get('path', None), obj_dict.get('uid', None),
-                obj_dict.get('gid', None), obj_dict.get('ctime', None),
-                obj_dict.get('mtime', None), obj_dict.get('atime', None),
-                obj_dict.get('mode', None), obj_dict.get('obj_type', None),
+                obj_id, obj_dict.get('uid', None), obj_dict.get('gid', None),
+                obj_dict.get('ctime', None), obj_dict.get('mtime', None),
+                obj_dict.get('atime', None), obj_dict.get('mode', None),
                 obj_dict.get('size', None), obj_dict.get('trusted.fid', None),
                 obj_dict.get('trusted.link', None),
-                obj_dict.get('trusted.lov', None),
-                obj_dict.get('objects', None), obj_dict.get('fid', None),))
+                obj_dict.get('trusted.lov', None)))
 
 
 # utility code
@@ -300,9 +331,8 @@ def lookup(ost_dbs0, ost_idx, fid):
     zfsobj_cursor.close()
 
     if len(all_row) > 1:
-        print(
-        'More than one partial fid match to [', partialfid, '] in ost index',
-        ost_idx)
+        print('More than one partial fid match to [', partialfid,
+              '] in ost index', ost_idx)
 
     size_of_stripes_on_ost = 0
     for zfsobj_row in all_row:
