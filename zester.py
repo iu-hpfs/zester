@@ -301,9 +301,8 @@ def lookup(ost_dbs0, ost_idx, fid):
     zfsobj_cursor.close()
 
     if len(all_row) > 1:
-        print(
-        'More than one partial fid match to [', partialfid, '] in ost index',
-        ost_idx)
+        print('More than one partial fid match to [', partialfid,
+              '] in ost index', ost_idx)
 
     size_of_stripes_on_ost = 0
     for zfsobj_row in all_row:
@@ -327,6 +326,15 @@ def get_total_size(ost_dbs0, parsed_lov):
             int(parsed_lov['lmm_object_id'], 16)) + ':0x0'
         total_size = total_size + lookup(ost_dbs0, lovOstIdx, fid)
     return total_size
+
+
+def commit_meta_db(count, meta_cur, meta_db, start):
+    if count % 5000 == 0:
+        meta_db.commit()
+        meta_cur = meta_db.cursor()
+        ts = time.clock()
+        util.show_timing(count, start, ts)
+    return meta_cur
 
 
 # conn = sqlite3.connect(":memory:")
@@ -356,11 +364,7 @@ def persist_objects(meta_db, mdt_dbs0, ost_dbs0):
             if trusted_lov is not None:
                 # todo: was "and obj_type == 'ZFS plain file'", need to add obj_type back?
                 count = count + 1
-                if count % 5000 == 0:
-                    meta_db.commit()
-                    meta_cur = meta_db.cursor()
-                    ts = time.clock()
-                    util.show_timing(count, start, ts)
+                meta_cur = commit_meta_db(count, meta_cur, meta_db, start)
 
                 # todo: was 'path = path.lstrip('/ROOT')' -- think through how root dir works in new methodology
 
@@ -373,9 +377,7 @@ def persist_objects(meta_db, mdt_dbs0, ost_dbs0):
 
                 # fid = ''
                 size = get_total_size(ost_dbs0, parsed_lov)
-                type0 = 'f'  # todo: (old) only regular files currently supported
-                metadata.save_metadata_obj(meta_cur, fid, uid, gid, ctime,
-                                           mtime, atime, mode, type0, size)
+                metadata.save_metadata_obj(meta_cur, fid, uid, gid, ctime, mtime, atime, mode, size)
             mdt_curr_row = mdt_cursor.fetchone()
         mdt_cursor.close()
     print('total ' + str(count))
