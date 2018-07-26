@@ -301,8 +301,9 @@ def lookup(ost_dbs0, ost_idx, fid):
     zfsobj_cursor.close()
 
     if len(all_row) > 1:
-        print('More than one partial fid match to [', partialfid,
-              '] in ost index', ost_idx)
+        print(
+        'More than one partial fid match to [', partialfid, '] in ost index',
+        ost_idx)
 
     size_of_stripes_on_ost = 0
     for zfsobj_row in all_row:
@@ -442,19 +443,17 @@ Options:
  --parse         only parse ZDB dumps into SQLite DB, do not assemble
 '''
 
-if __name__ == '__main__':
+
+def main():
     if len(sys.argv) < 2:
         print(msg)
         sys.exit(1)
     if sys.argv[1] == '--parse':
-        mdt_dbs0, ost_dbs0 = parse(sys.argv[2:])
+        parse(sys.argv[2:])
     else:
         mdt_dbs0, ost_dbs0 = parse(sys.argv[1:])
         persist(zesterDbFname, mdt_dbs0, ost_dbs0)
 
-# def main():
-#     mdt_dbs0, ost_dbs0 = parse(['mdt_00.zdb'])
-#
-#
-# if __name__ == '__main__':
-#     main()
+
+if __name__ == '__main__':
+    main()
