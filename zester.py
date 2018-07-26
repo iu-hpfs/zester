@@ -12,26 +12,20 @@
 # Systems group in the Pervasive Technology Institute at Indiana University.
 
 import binascii
-import cPickle
 import fileinput
 import sqlite3
 import sys
 import time
-from datetime import datetime
-from time import mktime
 
 import fidinfo
 import linkinfo
 import lovinfo
 import metadata
 import names
+import util
 
 
 # todo: implement these
-
-def get_fids_for_uid():
-    raise NotImplementedError
-
 
 def get_fids_for_uid(uid):
     raise NotImplementedError
@@ -100,45 +94,6 @@ def save_zfs_obj(zfs_cur, obj_dict, dataset_dicts):
                 obj_dict.get('trusted.lov', None)))
 
 
-# utility code
-
-def show_timing(count, start, ts):
-    tot_per_sec = int(count / (ts - start))
-    secs_in_day = 86400
-    tot_per_day = secs_in_day * tot_per_sec
-    if tot_per_day > 0:
-        print(str(count) + " total (" + str(tot_per_sec) + "/s)")
-    sys.stdout.flush()
-
-
-def serialize(filename, obj):
-    pickle_file = open(filename, 'wb')
-    cPickle.dump(obj, pickle_file)
-    pickle_file.close()
-
-
-def format_time_in_seconds(datetime_object):
-    return int(mktime(
-        datetime.strptime(datetime_object, '%a %b %d %H:%M:%S %Y').timetuple()))
-
-
-def deserialize(filename):
-    pickle_file = open(filename, 'rb')
-    obj = cPickle.load(pickle_file)
-    pickle_file.close()
-    return obj
-
-
-def tabs_at_beginning(line):
-    return len(line) - len(line.lstrip('\t'))
-
-
-def write_object(filename, obj):
-    input_filename = open(filename, "w")
-    input_filename.write(obj)
-    input_filename.close()
-
-
 # parsing____
 
 def parse_zdb(id0, inputfile, zfsobj_db=None, dataset_dicts=None):
@@ -181,7 +136,7 @@ def parse_zdb(id0, inputfile, zfsobj_db=None, dataset_dicts=None):
                         zfsobj_db.commit()
                         zfsobj_cur = zfsobj_db.cursor()
                     ts = time.clock()
-                    show_timing(count, start, ts)
+                    util.show_timing(count, start, ts)
                 in_fat_zap = False
                 data_line = inputfile.readline().rstrip()
                 zfs_data = data_line.split(None, 7)
@@ -192,7 +147,7 @@ def parse_zdb(id0, inputfile, zfsobj_db=None, dataset_dicts=None):
                 pass  # if (tabs_at_beginning(line) == 2) and (line[2].isdigit()) and (  #         '=' in line) and ('type: ' in line):  #     chopped = line.split('(type: ')  #     pair = chopped[0].strip().split(' = ')  #     type0 = chopped[1].rstrip().rstrip(')')  #     if type0 == 'Regular File':  #         name = int(pair[0])  #         idx = int(pair[1])  #         if 'fatZap' not in obj_dict:  #             obj_dict['fatZap'] = {}  #         obj_dict['fatZap'][name] = {'target': idx,  #                                     'type': type0}  #     else:  #         pass
             #                        print('Not saving info for type {0:s}.'.format(type))
             elif dataset_name and (obj_id is not None) and (
-                    tabs_at_beginning(line) == 1):
+                    util.tabs_at_beginning(line) == 1):
                 stripped = line[1:].rstrip('\n')
                 if stripped.startswith(" "):
                     raise Exception("mixed-tab/space-indenting, "
@@ -211,16 +166,16 @@ def parse_zdb(id0, inputfile, zfsobj_db=None, dataset_dicts=None):
                     # obj_dict['unkObjectType'] = True
                     pass
                 elif stripped.startswith("atime	"):
-                    obj_dict['atime'] = format_time_in_seconds(
+                    obj_dict['atime'] = util.format_time_in_seconds(
                         stripped.split("atime	")[1])
                 elif stripped.startswith("mtime	"):
-                    obj_dict['mtime'] = format_time_in_seconds(
+                    obj_dict['mtime'] = util.format_time_in_seconds(
                         stripped.split("mtime	")[1])
                 elif stripped.startswith("ctime	"):
-                    obj_dict['ctime'] = format_time_in_seconds(
+                    obj_dict['ctime'] = util.format_time_in_seconds(
                         stripped.split("ctime	")[1])
                 elif stripped.startswith("crtime	"):
-                    obj_dict['crtime'] = format_time_in_seconds(
+                    obj_dict['crtime'] = util.format_time_in_seconds(
                         stripped.split("crtime	")[1])
                 elif stripped.startswith("rdev	"):
                     pass
@@ -331,8 +286,9 @@ def lookup(ost_dbs0, ost_idx, fid):
     zfsobj_cursor.close()
 
     if len(all_row) > 1:
-        print('More than one partial fid match to [', partialfid,
-              '] in ost index', ost_idx)
+        print(
+        'More than one partial fid match to [', partialfid, '] in ost index',
+        ost_idx)
 
     size_of_stripes_on_ost = 0
     for zfsobj_row in all_row:
@@ -388,7 +344,7 @@ def persist_objects(meta_db, mdt_dbs0, ost_dbs0):
                     meta_db.commit()
                     meta_cur = meta_db.cursor()
                     ts = time.clock()
-                    show_timing(count, start, ts)
+                    util.show_timing(count, start, ts)
                 path = path.lstrip('/ROOT')
                 parsed_lov = lovinfo.parseLovInfo(
                     binascii.hexlify(str(fidinfo.decoder(trusted_lov))))
@@ -447,7 +403,7 @@ def parse(file_paths):
         #                           '(from_id)')
         zfsobj_db.commit()
         ts = time.clock()
-        show_timing(count, start, ts)
+        util.show_timing(count, start, ts)
         if lustre_type == 'mdt':
             mdt_dbs0[id0] = zfsobj_db
         elif lustre_type == 'ost':
