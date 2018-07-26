@@ -110,9 +110,9 @@ def parse_zdb(id0, inputfile, zfsobj_db=None, dataset_dicts=None):
     try:
         for line in inputfile:
             if line.startswith("Metaslabs:"):
-                dataset_name = None  # todo: parse and store?
+                dataset_name = None  # todo: (old) parse and store?
             if line.startswith("Dirty time logs:"):
-                # todo: parse and store?
+                # todo: (old) parse and store?
                 dataset_name = None
             if line.startswith("Dataset"):
                 if dataset_name is not None:
@@ -144,8 +144,22 @@ def parse_zdb(id0, inputfile, zfsobj_db=None, dataset_dicts=None):
                 obj_type = zfs_data[7]
                 obj_dict = {'id': id0, 'obj_id': obj_id, 'obj_type': obj_type}
             elif in_fat_zap:
-                pass  # if (tabs_at_beginning(line) == 2) and (line[2].isdigit()) and (  #         '=' in line) and ('type: ' in line):  #     chopped = line.split('(type: ')  #     pair = chopped[0].strip().split(' = ')  #     type0 = chopped[1].rstrip().rstrip(')')  #     if type0 == 'Regular File':  #         name = int(pair[0])  #         idx = int(pair[1])  #         if 'fatZap' not in obj_dict:  #             obj_dict['fatZap'] = {}  #         obj_dict['fatZap'][name] = {'target': idx,  #                                     'type': type0}  #     else:  #         pass
-            #                        print('Not saving info for type {0:s}.'.format(type))
+                # if (tabs_at_beginning(line) == 2) and (line[2].isdigit()) and (
+                #         '=' in line) and ('type: ' in line):
+                #     chopped = line.split('(type: ')
+                #     pair = chopped[0].strip().split(' = ')
+                #     type0 = chopped[1].rstrip().rstrip(')')
+                #     if type0 == 'Regular File':
+                #         name = int(pair[0])
+                #         idx = int(pair[1])
+                #         if 'fatZap' not in obj_dict:
+                #             obj_dict['fatZap'] = {}
+                #         obj_dict['fatZap'][name] = {'target': idx,
+                #                                     'type': type0}
+                #     else:
+                #         pass
+                #  print('Not saving info for type {0:s}.'.format(type))
+                pass
             elif dataset_name and (obj_id is not None) and (
                     util.tabs_at_beginning(line) == 1):
                 stripped = line[1:].rstrip('\n')
@@ -259,6 +273,7 @@ def parse_zdb(id0, inputfile, zfsobj_db=None, dataset_dicts=None):
 #    ost_zfsobj_db = ost_dbs[ostIdx]
 #    query = 'select id, from_id, to_id, zfs_type from fatzap where ' \
 #            'from_id=' + str(objId) + ' and zfs_type="Regular File"'
+# todo: switch to new methodology
 def lookup(ost_dbs0, ost_idx, fid):
     ost_zfsobj_db = ost_dbs0[ost_idx]
     # fid.rsplit(':',1)[0] trims off the version, which is different for each
@@ -280,15 +295,14 @@ def lookup(ost_dbs0, ost_idx, fid):
     #    for fatzap_row in all_fatzap:
     #        (id, from_id, to_id, zfs_type) = fatzap_row
     zfsobj_cursor = ost_zfsobj_db.cursor()
-    zfsobj_cursor.execute('''SELECT id, path, uid, gid, ctime, mtime, atime, mode, obj_type, size,
-        trusted_fid, trusted_link, trusted_lov, fid FROM zfsobj where fid like "''' + partialfid + '"')
+    zfsobj_cursor.execute('''SELECT id, uid, gid, ctime, mtime, atime, mode, size,
+        trusted_fid, trusted_link, trusted_lov FROM zfsobj where fid like "''' + partialfid + '"')
     all_row = zfsobj_cursor.fetchall()
     zfsobj_cursor.close()
 
     if len(all_row) > 1:
-        print(
-        'More than one partial fid match to [', partialfid, '] in ost index',
-        ost_idx)
+        print('More than one partial fid match to [', partialfid,
+              '] in ost index', ost_idx)
 
     size_of_stripes_on_ost = 0
     for zfsobj_row in all_row:
@@ -330,32 +344,35 @@ def persist_objects(meta_db, mdt_dbs0, ost_dbs0):
     start = time.clock()
     meta_cur = meta_db.cursor()
     for mdt_dataset_id, mdt_dataset_db in mdt_dbs0.items():
-        query = '''SELECT id, path, uid, gid, ctime, mtime, atime, mode,
-                 obj_type, size, trusted_fid, trusted_link, trusted_lov, fid FROM zfsobj'''
+        query = '''SELECT id, uid, gid, ctime, mtime, atime, mode,
+                  size, trusted_fid, trusted_link, trusted_lov FROM zfsobj'''
         mdt_cursor = mdt_dataset_db.cursor()
         mdt_cursor.execute(query)
         mdt_curr_row = mdt_cursor.fetchone()
         while mdt_curr_row is not None:
-            (id0, path, uid, gid, ctime, mtime, atime, mode, obj_type, size,
-             trusted_fid, trusted_link, trusted_lov, fid) = mdt_curr_row
-            if trusted_lov is not None and obj_type == 'ZFS plain file':
+            (id0, uid, gid, ctime, mtime, atime, mode, size, trusted_fid,
+             trusted_link, trusted_lov) = mdt_curr_row
+            if trusted_lov is not None:
+                # todo: was "and obj_type == 'ZFS plain file'", need to add obj_type back?
                 count = count + 1
                 if count % 5000 == 0:
                     meta_db.commit()
                     meta_cur = meta_db.cursor()
                     ts = time.clock()
                     util.show_timing(count, start, ts)
-                path = path.lstrip('/ROOT')
+
+                # todo: was 'path = path.lstrip('/ROOT')' -- think through how root dir works in new methodology
+
                 parsed_lov = lovinfo.parseLovInfo(
                     binascii.hexlify(str(fidinfo.decoder(trusted_lov))))
-                # todo: MDT FID decoding currently experimental, add tests
+                # todo: (old) MDT FID decoding currently experimental, add tests
                 # fid = '0x' + parsed_lov['lmm_seq'] + ':0x' + parsed_lov['lmm_object_id'] + ':0x0'
                 fid = hex(int(parsed_lov['lmm_seq'], 16)) + ':' + hex(
                     int(parsed_lov['lmm_object_id'], 16)) + ':0x0'
 
                 # fid = ''
                 size = get_total_size(ost_dbs0, parsed_lov)
-                type0 = 'f'  # todo: only regular files currently supported
+                type0 = 'f'  # todo: (old) only regular files currently supported
                 metadata.save_metadata_obj(meta_cur, fid, uid, gid, ctime,
                                            mtime, atime, mode, type0, size)
             mdt_curr_row = mdt_cursor.fetchone()
