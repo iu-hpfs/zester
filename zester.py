@@ -347,6 +347,20 @@ def commit_meta_db(count, meta_cur, meta_db, start):
 # linkinfo.parse_link_info(trusted_link_hex):
 # -> [{'pfid': '0x200000400:0x2:0x0', 'filename': 'a'}, {'pfid': '0x240000401:0x2:0
 
+def persist_names(name_db, mdt_dbs0):
+    name_cur = name_db.cursor()
+    for mdt_dataset_id, mdt_dataset_db in mdt_dbs0.items():
+        query = '''SELECT fid, trusted_link from zfsobj'''
+        mdt_cursor = mdt_dataset_db.cursor()
+        mdt_cursor.execute(query)
+        mdt_curr_row = mdt_cursor.fetchone()
+        while mdt_curr_row is not None:
+            (fid, trusted_link) = mdt_curr_row
+            for li_dict in linkinfo.parse_link_info(trusted_link):
+                names.insert_name(name_cur, fid, li_dict['filename'],
+                                  li_dict['pfid'])
+
+
 def persist_objects(meta_db, mdt_dbs0, ost_dbs0):
     count = 0
     start = time.clock()
@@ -381,12 +395,19 @@ def persist_objects(meta_db, mdt_dbs0, ost_dbs0):
     print('done')
 
 
-def persist(zester_db_fname, mdt_dbs0, ost_dbs0):
+def persist(metadata_db_fname, name_db_fname, mdt_dbs0, ost_dbs0):
     print('persisting objects')
-    meta_db = sqlite3.connect(zester_db_fname)
+    meta_db = sqlite3.connect(metadata_db_fname)
     meta_db.text_factory = str
     metadata.setup_metadata_db(meta_db)
     persist_objects(meta_db, mdt_dbs0, ost_dbs0)
+
+    print('persisting names')
+    name_db = sqlite3.connect(name_db_fname)
+    name_db.text_factory = str
+    names.create_names_table(name_db)
+    persist_names(meta_db, mdt_dbs0, ost_dbs0)
+
     print('bulding metadata indexes')
     meta_cur = meta_db.cursor()
     meta_db.commit()
@@ -428,7 +449,6 @@ def parse(file_paths):
 
 # main____
 
-zesterDbFname = 'metadata.db'
 
 msg = '''Usage: zester [OPTION]... mdt_<mdtidx>.zdb ... ost_<ostidx>.zdb ...
 Parse MDT and ZDB dumps into a SQLite representation then assemble into a
@@ -447,7 +467,7 @@ def main():
         parse(sys.argv[2:])
     else:
         mdt_dbs0, ost_dbs0 = parse(sys.argv[1:])
-        persist(zesterDbFname, mdt_dbs0, ost_dbs0)
+        persist('metadata.db', 'name.db', mdt_dbs0, ost_dbs0)
 
 
 if __name__ == '__main__':

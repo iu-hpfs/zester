@@ -3,7 +3,7 @@ import os
 import stat
 
 
-def create_names_table(conn):
+def setup_name_table(conn):
     conn.execute('''
         create table name (
           fid        text,
@@ -21,7 +21,7 @@ def drop_names_table(conn):
 
 def insert_name(curs, fid, name, parent_fid):
     curs.execute("insert into name (fid, name, parent_fid) values (?, ?, ?)",
-        [fid, name, parent_fid]).fetchone()
+                 [fid, name, parent_fid]).fetchone()
 
 
 def populate_names(curs, parent_dir, parent_id):
@@ -61,7 +61,7 @@ def dump(cur):
 
 def test_names():
     conn = sqlite3.connect(":memory:")
-    create_names_table(conn)
+    setup_name_table(conn)
     curs = conn.cursor()
     populate_names(curs, "test_dir", None)
     conn.commit()
