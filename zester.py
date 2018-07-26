@@ -25,7 +25,7 @@ import lovinfo
 import metadata
 
 
-# zfs-db____
+# ____
 
 def open_zfsobj_db(zfsobj_db_fame):
     zfsobj_db = sqlite3.connect(zfsobj_db_fame)
@@ -158,21 +158,7 @@ def parse_zdb(id0, inputfile, zfsobj_db=None, dataset_dicts=None):
                 obj_type = zfs_data[7]
                 obj_dict = {'id': id0, 'obj_id': obj_id, 'obj_type': obj_type}
             elif in_fat_zap:
-                pass
-                # if (tabs_at_beginning(line) == 2) and (line[2].isdigit()) and (
-                #         '=' in line) and ('type: ' in line):
-                #     chopped = line.split('(type: ')
-                #     pair = chopped[0].strip().split(' = ')
-                #     type0 = chopped[1].rstrip().rstrip(')')
-                #     if type0 == 'Regular File':
-                #         name = int(pair[0])
-                #         idx = int(pair[1])
-                #         if 'fatZap' not in obj_dict:
-                #             obj_dict['fatZap'] = {}
-                #         obj_dict['fatZap'][name] = {'target': idx,
-                #                                     'type': type0}
-                #     else:
-                #         pass
+                pass  # if (tabs_at_beginning(line) == 2) and (line[2].isdigit()) and (  #         '=' in line) and ('type: ' in line):  #     chopped = line.split('(type: ')  #     pair = chopped[0].strip().split(' = ')  #     type0 = chopped[1].rstrip().rstrip(')')  #     if type0 == 'Regular File':  #         name = int(pair[0])  #         idx = int(pair[1])  #         if 'fatZap' not in obj_dict:  #             obj_dict['fatZap'] = {}  #         obj_dict['fatZap'][name] = {'target': idx,  #                                     'type': type0}  #     else:  #         pass
             #                        print('Not saving info for type {0:s}.'.format(type))
             elif dataset_name and (obj_id is not None) and (
                     tabs_at_beginning(line) == 1):
@@ -308,16 +294,15 @@ def lookup(ost_dbs0, ost_idx, fid):
     #    for fatzap_row in all_fatzap:
     #        (id, from_id, to_id, zfs_type) = fatzap_row
     zfsobj_cursor = ost_zfsobj_db.cursor()
-    zfsobj_cursor.execute(
-        '''SELECT id, path, uid, gid, ctime, mtime, atime, mode, obj_type, size,
-        trusted_fid, trusted_link, trusted_lov, fid FROM zfsobj where fid like "'''
-        + partialfid + '"')
+    zfsobj_cursor.execute('''SELECT id, path, uid, gid, ctime, mtime, atime, mode, obj_type, size,
+        trusted_fid, trusted_link, trusted_lov, fid FROM zfsobj where fid like "''' + partialfid + '"')
     all_row = zfsobj_cursor.fetchall()
     zfsobj_cursor.close()
 
     if len(all_row) > 1:
-        print('More than one partial fid match to [', partialfid,
-              '] in ost index', ost_idx)
+        print(
+        'More than one partial fid match to [', partialfid, '] in ost index',
+        ost_idx)
 
     size_of_stripes_on_ost = 0
     for zfsobj_row in all_row:
@@ -385,9 +370,8 @@ def persist_objects(meta_db, mdt_dbs0, ost_dbs0):
                 # fid = ''
                 size = get_total_size(ost_dbs0, parsed_lov)
                 type0 = 'f'  # todo: only regular files currently supported
-                metadata.save_metadata_obj(meta_cur, fid, uid,
-                                           gid, ctime, mtime, atime, mode,
-                                           type0, size)
+                metadata.save_metadata_obj(meta_cur, fid, uid, gid, ctime,
+                                           mtime, atime, mode, type0, size)
             mdt_curr_row = mdt_cursor.fetchone()
         mdt_cursor.close()
     print('total ' + str(count))
@@ -455,7 +439,6 @@ Options:
  --parse         only parse ZDB dumps into SQLite DB, do not assemble
 '''
 
-
 if __name__ == '__main__':
     if len(sys.argv) < 2:
         print(msg)
@@ -465,7 +448,6 @@ if __name__ == '__main__':
     else:
         mdt_dbs0, ost_dbs0 = parse(sys.argv[1:])
         persist(zesterDbFname, mdt_dbs0, ost_dbs0)
-
 
 # def main():
 #     mdt_dbs0, ost_dbs0 = parse(['mdt_00.zdb'])
