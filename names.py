@@ -26,7 +26,7 @@ def setup_name_table(conn):
 
 def insert_name(curs, fid, name, parent_fid):
     curs.execute("insert into name (fid, name, parent_fid) values (?, ?, ?)",
-                 [fid, name, parent_fid]).fetchone()
+                 [fid, name, parent_fid])           # .fetchone()         Do we need the .fetchone() here?
 
 
 def populate_names(curs, parent_dir, parent_id):

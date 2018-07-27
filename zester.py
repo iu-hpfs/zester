@@ -144,10 +144,12 @@ def parse_zdb(id0, inputfile, zfsobj_db=None, dataset_dicts=None):
             else:
                 zfs_obj_match = zfs_obj_match_new
 
-            # If we see a new object line, clear and start parsing this object.
+            # If we see a new object line, save record and start parsing this object.
             if dataset_name and zfs_obj_match:
                 if obj_dict is not None:
-                    save_zfs_obj(zfsobj_cur, obj_dict, dataset_dicts)
+                    # Only objects with a Lustre path should be saved (i.e. those with trusted.link EAs).
+                    if obj_dict.get('trusted.link') is not None:
+                        save_zfs_obj(zfsobj_cur, obj_dict, dataset_dicts)
                 count = count + 1
                 if count % 15000 == 0:
                     if zfsobj_db is not None:
@@ -166,6 +168,10 @@ def parse_zdb(id0, inputfile, zfsobj_db=None, dataset_dicts=None):
                     zfs_data = data_line.split(None, 8)     # with 'dnsize' in line, need to split 8 times
                     obj_id = int(zfs_data[0])
                     obj_type = zfs_data[8]
+                else:
+                    obj_type = None
+                    obj_id = None
+                    print('ZDB input did not match expected object line format.')  # This better not occur!
 
                 obj_dict = {'id': id0, 'obj_id': obj_id, 'obj_type': obj_type}
             elif in_fat_zap:
@@ -188,7 +194,6 @@ def parse_zdb(id0, inputfile, zfsobj_db=None, dataset_dicts=None):
                 #                        print('Not saving info for type {0:s}.'.format(type))
             # Saw this in 0.7.5-based 'zdb -dddd' output on pool; need to skip these four lines
             elif 'Dnode slots:' in line:
-                print( "Saw Dnode slots line" )
                 # Occurs at the end of the dataset info:
                 # skip next 3 lines
                 inputfile.readline()
@@ -243,9 +248,9 @@ def parse_zdb(id0, inputfile, zfsobj_db=None, dataset_dicts=None):
                             trusted_lov = obj_dict['trusted.lov'] = pair[1]
                             # todo: eval decoding fid in later pass
                             try:
-                                tmphexlov = binascii.hexlify(
+                                trusted_lov_hex = binascii.hexlify(
                                     str(fidinfo.decoder(trusted_lov)))
-                                parsed = lovinfo.parseLovInfo(tmphexlov)
+                                parsed = lovinfo.parseLovInfo(trusted_lov_hex)
                                 obj_dict['objects'] = str(
                                     parsed['ost_index_objids'])
                                 parsed_lov = lovinfo.parseLovInfo(
@@ -255,17 +260,22 @@ def parse_zdb(id0, inputfile, zfsobj_db=None, dataset_dicts=None):
                                     int(parsed_lov['lmm_seq'], 16)) + ':' + hex(
                                     int(parsed_lov['lmm_object_id'],
                                         16)) + ':0x0'
-                                obj_dict['fid'] = fid
+                                # trusted.lma EA shows up before records with trusted.lov. Double-check fid calculation.
+                                if obj_dict.get('fid') is not None:
+                                    if obj_dict.get('fid') != fid:
+                                        print('Hey there! FIDs do not match between trusted.lma and trusted.link.')
+                                        exit(1)
                             except:
                                 if 'ZFS directory' not in obj_dict['obj_type']:
                                     raise
                                 pass
                         if name == 'trusted.lma':
-                            # trusted.lma is u32:u32:fid in little-endian
+                            #  trusted.lma is u32:u32:fid in little-endian
                             #  where fid is u64:u32:u32.
                             #  So trim the first 8 bytes to leave the fid
-                            #  fid2 = str(fidinfo.decode_fid(trusted_lma[32:]))
                             trusted_lma = pair[1]
+                            fid = str(fidinfo.decode_fid(trusted_lma[32:]))
+                            obj_dict['fid'] = fid
 
                         line = inputfile.readline().strip()
                     if "UNKNOWN OBJECT TYPE" in line:
@@ -290,7 +300,7 @@ def parse_zdb(id0, inputfile, zfsobj_db=None, dataset_dicts=None):
                     msg0 = "UNKNOWN 1-tab attribute: [dataset:{0}]" \
                            "[obj_id:{1}][{2}]"
                     raise Exception(msg0.format(dataset_name, obj_id, stripped))
-        if obj_dict is not None:
+        if obj_dict.get('trusted.link') is not None:
             save_zfs_obj(zfsobj_cur, obj_dict, dataset_dicts)
     except IOError as e:
         print("I/O error({0}): {1}".format(e.errno, e.strerror))
@@ -394,11 +404,13 @@ def persist_names(name_db, mdt_dbs0):
         while mdt_curr_row is not None:
             (fid, trusted_link) = mdt_curr_row
             if trusted_link is not None:
+                trusted_link_hex = binascii.hexlify(str(fidinfo.decoder(trusted_link)))
                 try:
-                    li_dicts = linkinfo.parse_link_info(trusted_link)
+                    li_dicts = linkinfo.parse_link_info(trusted_link_hex)
                     for li_dict in li_dicts:
                         names.insert_name(name_cur, fid, li_dict['filename'],
                                           li_dict['pfid'])
+                        count = count + 1
                 except TypeError:
                     # todo: make sure this is normal
                     pass
@@ -407,12 +419,12 @@ def persist_names(name_db, mdt_dbs0):
                     pass
             mdt_curr_row = mdt_cursor.fetchone()
         mdt_cursor.close()
-        print('total ' + str(count))
-        print('comitting')
-        name_db.commit()
-        print('closing')
-        name_cur.close()
-        print('done')
+    print('total ' + str(count))
+    print('comitting')
+    name_db.commit()
+    print('closing')
+    name_cur.close()
+    print('done')
 
 
 def persist_objects(meta_db, mdt_dbs0, ost_dbs0):
@@ -428,17 +440,16 @@ def persist_objects(meta_db, mdt_dbs0, ost_dbs0):
         while mdt_curr_row is not None:
             (id0, uid, gid, ctime, mtime, atime, mode, obj_type, size, fid,
              trusted_link, trusted_lov) = mdt_curr_row
-            # todo: had to add obj_type back to zfsobj, re-evaluate later
-            if trusted_lov and obj_type == 'ZFS plain file' is not None:
-                count = count + 1
-                meta_cur = commit_meta_db(count, meta_cur, meta_db, start)
+            if trusted_lov is not None:
+                if obj_type == 'ZFS plain file':
+                    count = count + 1
+                    meta_cur = commit_meta_db(count, meta_cur, meta_db, start)
 
-                parsed_lov = lovinfo.parseLovInfo(
-                    binascii.hexlify(str(fidinfo.decoder(trusted_lov))))
-                size = get_total_size(ost_dbs0, parsed_lov)
+                    parsed_lov = lovinfo.parseLovInfo(binascii.hexlify(str(fidinfo.decoder(trusted_lov))))
 
-                metadata.save_metadata_obj(meta_cur, fid, uid, gid, ctime,
-                                           mtime, atime, mode, size)
+                    size = get_total_size(ost_dbs0, parsed_lov)
+
+                    metadata.save_metadata_obj(meta_cur, fid, uid, gid, ctime, mtime, atime, mode, size)
             mdt_curr_row = mdt_cursor.fetchone()
         mdt_cursor.close()
     print('total ' + str(count))
@@ -460,9 +471,9 @@ def persist(metadata_db_fname, name_db_fname, mdt_dbs0, ost_dbs0):
     name_db = sqlite3.connect(name_db_fname)
     name_db.text_factory = str
     names.setup_name_table(name_db)
-    persist_names(meta_db, mdt_dbs0)
+    persist_names(name_db, mdt_dbs0)
 
-    print('bulding metadata indexes')
+    print('building metadata indexes')
     meta_cur = meta_db.cursor()
     meta_db.commit()
     meta_cur.close()

@@ -99,8 +99,8 @@ def parse_link_info(trusted_link_hex):
     hard_link_count = int(hard_link_count, 16)
 
     # Some debugging output
-    print('Link EA magic:   {0:s}'.format(hex(int(link_magic, 16))))
-    print('Hard Link Count: {0:d}'.format(hard_link_count))
+    # print('Link EA magic:   {0:s}'.format(hex(int(link_magic, 16))))
+    # print('Hard Link Count: {0:d}'.format(hard_link_count))
 
     # Skip one eight-byte integer that holds the header length:
     # trusted_link_hex[16:32]
@@ -160,10 +160,10 @@ def parse_link_info(trusted_link_hex):
         filename = binascii.unhexlify(trusted_link_hex[istart:istop])
 
         # Some debugging output
-        print('Parent FID:      [{0:s}]'.format(parent_fid))
-        print('Record length:   {0:d}'.format(record_length))
-        print('Filename length: {0:d}'.format(filename_length))
-        print('Filename:        {0:s}'.format(filename))
+        # print('Parent FID:      [{0:s}]'.format(parent_fid))
+        # print('Record length:   {0:d}'.format(record_length))
+        # print('Filename length: {0:d}'.format(filename_length))
+        # print('Filename:        {0:s}'.format(filename))
 
         results.append({'pfid': parent_fid, 'filename': filename})
 
