@@ -165,7 +165,7 @@ def parse_link_info(trusted_link_hex):
         # print('Filename length: {0:d}'.format(filename_length))
         # print('Filename:        {0:s}'.format(filename))
 
-        results.append({'pfid': parent_fid, 'filename': filename})
+        results.append({'pfid': parent_fid, 'filename': unicode(filename)})
 
     return results
 
