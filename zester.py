@@ -269,8 +269,8 @@ def parse_zdb(id0, inputfile, zfsobj_db=None, dataset_dicts=None):
                                 # trusted.lma EA shows up before records with trusted.lov. Double-check fid calculation.
                                 if obj_dict.get('fid') is not None:
                                     if obj_dict.get('fid') != fid:
-                                        print('Hey there! FIDs do not match between trusted.lma and trusted.link.')
-                                        raise
+                                        print('Hey there! FIDs do not match between trusted.lma and trusted.link ' \
+                                              + 'for FID [{0:s]'.format(fid))
                             except:
                                 pass
                         if name == 'trusted.lma':
