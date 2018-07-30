@@ -173,6 +173,12 @@ def parse_zdb(id0, inputfile, zfsobj_db=None, dataset_dicts=None):
                     obj_id = None
                     print('ZDB input did not match expected object line format.')  # This better not occur!
 
+                # Modify obj_type value to 'f' for 'ZFS plain file' and 'd' for 'ZFS directory', to compact storage.
+                if obj_type == 'ZFS plain file':
+                    obj_type = 'f'
+                elif obj_type == 'ZFS directory':
+                    obj_type = 'd'
+
                 obj_dict = {'id': id0, 'obj_id': obj_id, 'obj_type': obj_type}
             elif in_fat_zap:
                 # if (tabs_at_beginning(line) == 2) and (line[2].isdigit()) and (
@@ -264,10 +270,8 @@ def parse_zdb(id0, inputfile, zfsobj_db=None, dataset_dicts=None):
                                 if obj_dict.get('fid') is not None:
                                     if obj_dict.get('fid') != fid:
                                         print('Hey there! FIDs do not match between trusted.lma and trusted.link.')
-                                        exit(1)
+                                        raise
                             except:
-                                if 'ZFS directory' not in obj_dict['obj_type']:
-                                    raise
                                 pass
                         if name == 'trusted.lma':
                             #  trusted.lma is u32:u32:fid in little-endian
@@ -441,7 +445,7 @@ def persist_objects(meta_db, mdt_dbs0, ost_dbs0):
             (id0, uid, gid, ctime, mtime, atime, mode, obj_type, size, fid,
              trusted_link, trusted_lov) = mdt_curr_row
             if trusted_lov is not None:
-                if obj_type == 'ZFS plain file':
+                if obj_type == 'f':
                     count = count + 1
                     meta_cur = commit_meta_db(count, meta_cur, meta_db, start)
 
