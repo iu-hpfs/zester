@@ -542,12 +542,12 @@ def main():
 if __name__ == '__main__':
     main()
 
-    import sqlite3
-    import names
-    db = sqlite3.connect('name.db')
-
-    print(names.fid_to_path(db, '0x200000402:0x100:0x0'))
-    print(names.fid_to_path(db, '0x240000402:0x4e92:0x0'))
-    print(names.fid_to_path(db, '0x200000402:0x10a:0x0'))
-    print(names.fid_to_path(db, '0x240000402:0x4e97:0x0'))
-    print(names.fid_to_path(db, '0x200000402:0x10b:0x0'))
+    # import sqlite3
+    # import names
+    # db = sqlite3.connect('name.db')
+    #
+    # print(names.fid_to_path(db, '0x200000402:0x100:0x0'))
+    # print(names.fid_to_path(db, '0x240000402:0x4e92:0x0'))
+    # print(names.fid_to_path(db, '0x200000402:0x10a:0x0'))
+    # print(names.fid_to_path(db, '0x240000402:0x4e97:0x0'))
+    # print(names.fid_to_path(db, '0x200000402:0x10b:0x0'))
