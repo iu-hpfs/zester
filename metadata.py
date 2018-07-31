@@ -4,7 +4,7 @@ def setup_metadata_db(meta_db):
     meta_cur.execute('''
         CREATE TABLE metadata (fid TEXT primary key, uid INTEGER, gid INTEGER, 
         ctime INTEGER, mtime INTEGER, atime INTEGER, mode INTEGER,
-        size INTEGER)
+        size INTEGER, obj_type TEXT)
         ''')
     meta_cur.close()
     meta_cur = meta_db.cursor()
@@ -12,8 +12,8 @@ def setup_metadata_db(meta_db):
     meta_cur.close()
 
 
-def save_metadata_obj(meta_cur, fid, uid, gid, ctime, mtime, atime, mode, size):
+def save_metadata_obj(meta_cur, fid, uid, gid, ctime, mtime, atime, mode, size, obj_type):
     cmd = '''INSERT INTO [metadata] 
-          (fid, uid, gid, ctime, mtime, atime, mode, size)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?)'''
-    meta_cur.execute(cmd, (fid, uid, gid, ctime, mtime, atime, mode, size))
+          (fid, uid, gid, ctime, mtime, atime, mode, size, obj_type)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'''
+    meta_cur.execute(cmd, (fid, uid, gid, ctime, mtime, atime, mode, size, obj_type))

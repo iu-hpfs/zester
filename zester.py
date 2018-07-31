@@ -453,11 +453,11 @@ def persist_objects(meta_db, mdt_dbs0, ost_dbs0):
 
                     size = get_total_size(ost_dbs0, parsed_lov)
 
-                    metadata.save_metadata_obj(meta_cur, fid, uid, gid, ctime, mtime, atime, mode, size)
+                    metadata.save_metadata_obj(meta_cur, fid, uid, gid, ctime, mtime, atime, mode, size, obj_type)
             mdt_curr_row = mdt_cursor.fetchone()
         mdt_cursor.close()
     print('total ' + str(count))
-    print('comitting')
+    print('committing')
     meta_db.commit()
     print('closing')
     meta_cur.close()
@@ -541,3 +541,13 @@ def main():
 
 if __name__ == '__main__':
     main()
+
+    import sqlite3
+    import names
+    db = sqlite3.connect('name.db')
+
+    print(names.fid_to_path(db, '0x200000402:0x100:0x0'))
+    print(names.fid_to_path(db, '0x240000402:0x4e92:0x0'))
+    print(names.fid_to_path(db, '0x200000402:0x10a:0x0'))
+    print(names.fid_to_path(db, '0x240000402:0x4e97:0x0'))
+    print(names.fid_to_path(db, '0x200000402:0x10b:0x0'))
