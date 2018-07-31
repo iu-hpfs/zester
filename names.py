@@ -47,6 +47,7 @@ def fid_to_path(conn, srch_fid):
     def helper(cur, fid0, path_so_far):
         sql = "select fid, name, parent_fid from name where fid = ?"
         search_output = cur.execute(sql, [fid0]).fetchone()
+
         # FWIW: [0x200000007:0x1:0x0] is the FID for the root of the lustre filesystem. We could iterate until
         # we obtain that for the parent FID. However, the null search works as well, and will not cause an infinite
         # loop if we have an incomplete path in the database.
@@ -83,32 +84,53 @@ def fid_to_path(conn, srch_fid):
         # [root@zester-mds01 ~]# lfs fid2path zester 0x200000007:0x1:0x0
         # /
         #
-        # We don't want these non-Unix path components to show in the output. So, we'll look for them
-        # and squeeze them out of the returned path.
+        # We don't want these non-Unix path components to show in the output.
+        # So, we'll look for them and squeeze them out of the returned path.
         #
+
         if search_output is None:
             # Need to figure out how to deal with cur.execute.fetchone() returning null results
             return path_so_far
         else:
             (fid, name, parent_fid) = search_output
-            print(fid, name, parent_fid)
             path_so_far.append(name)
             return helper(cur, parent_fid, path_so_far)
 
+    # Create a regular expression to match internal Lustre names for
+    # remote directory objects with their own FIDS.
     remote_directory_object = re.compile(r'\[0x[0-9a-fA-F]+:0x[0-9a-fA-F]+:0x[0-9a-fA-F]+\]:[0-9]+')
 
+    # Initialize an empty list for paths to the srch_fid, which will be appended to below.
+    paths = []
     cur = conn.cursor()
 
-    ls0 = helper(cur, srch_fid, [])
-    ls0.reverse()
-    path_build = ""
-    for name0 in ls0:
-        if remote_directory_object.match(name0):
-            continue
-        path_build = path_build + "/" + name0
+    # Do the first search outside the helper() function,
+    # to account for possible multiple hard links with same srch_fid.
+    sql = "select fid, name, parent_fid from name where fid = ?"
+    search_output_list = cur.execute(sql, [srch_fid]).fetchall()
+    for search_output in search_output_list:
+        (fid, name, parent_fid) = search_output
+        ls0 = helper(cur, parent_fid, [name])
 
+        # Build the path based on the search for the current parent_fid
+        # Note: Multiple paths to a FID implies multiple hard links to this FID, which will
+        # have different paths, and possibly different parent fids. So, we loop over each
+        # case.
+        ls0.reverse()
+        path_build = ""
+        for name0 in ls0:
+            # Skip path names that match internal Lustre remote directory names,
+            # which aren't path of the real path.
+            if remote_directory_object.match(name0):
+                continue
+            path_build = path_build + "/" + name0
+
+        # Add the reconstructed path to the list of paths to return
+        paths.append(path_build)
     cur.close()
-    return path_build
+
+    # Return all paths to the srch_fid
+    return paths
 
 
 def dump(cur):
