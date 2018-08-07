@@ -4,19 +4,19 @@ import stat
 
 
 def drop_name_table(conn):
-    conn.execute("drop table if exists name")
+    conn.execute("drop table if exists names")
 
 
 def create_name_table(conn):
     conn.execute('''
-        create table name (
+        create table names (
           fid        text,
           name       text,
           parent_fid text,
           primary key (name, parent_fid)
           )''')
-    conn.execute('create index name_f on name (fid)')
-    conn.execute('create index name_p on name (parent_fid)')
+    conn.execute('create index name_f on names (fid)')
+    conn.execute('create index name_p on names (parent_fid)')
 
 
 def setup_name_table(conn):
@@ -25,8 +25,8 @@ def setup_name_table(conn):
 
 
 def insert_name(curs, fid, name, parent_fid):
-    curs.execute("insert into name (fid, name, parent_fid) values (?, ?, ?)",
-                 [fid, name, parent_fid])           # .fetchone()         Do we need the .fetchone() here?
+    curs.execute("insert into names (fid, name, parent_fid) values (?, ?, ?)",
+                 [fid, name, parent_fid])
 
 
 def populate_names(curs, parent_dir, parent_id):
@@ -45,7 +45,7 @@ def fid_to_path(conn, srch_fid):
     import re
 
     def helper(cur, fid0, path_so_far):
-        sql = "select fid, name, parent_fid from name where fid = ?"
+        sql = "select fid, name, parent_fid from names where fid = ?"
         search_output = cur.execute(sql, [fid0]).fetchone()
 
         # FWIW: [0x200000007:0x1:0x0] is the FID for the root of the lustre filesystem. We could iterate until
@@ -106,7 +106,7 @@ def fid_to_path(conn, srch_fid):
 
     # Do the first search outside the helper() function,
     # to account for possible multiple hard links with same srch_fid.
-    sql = "select fid, name, parent_fid from name where fid = ?"
+    sql = "select fid, name, parent_fid from names where fid = ?"
     search_output_list = cur.execute(sql, [srch_fid]).fetchall()
     for search_output in search_output_list:
         (fid, name, parent_fid) = search_output
@@ -144,7 +144,7 @@ def test_names():
     curs = conn.cursor()
     populate_names(curs, "test_dir", None)
     conn.commit()
-    sql = """select * from name where name like ? limit 100"""
+    sql = """select * from names where name like ? limit 100"""
     curs = conn.execute(sql, ["file2.txt"])
     (fid, _, _) = curs.fetchone()
     assert fid_to_path(conn, fid) == '/a/ab/file2.txt'
