@@ -400,6 +400,11 @@ def persist_names(name_db, mdt_dbs0):
     count = 0
     start = time.clock()
     name_cur = name_db.cursor()
+
+    # Insert an entry for the filesystem root, which in Lustre 2.x has a FID of [0x200000007:0x1:0x0].
+    # See names.py for more info, and reference to Lustre source code.
+    names.insert_name(name_cur, '0x200000007:0x1:0x0', 'ROOT', '')
+
     for mdt_dataset_id, mdt_dataset_db in mdt_dbs0.items():
         query = '''SELECT fid, trusted_link from zfsobj'''
         mdt_cursor = mdt_dataset_db.cursor()
@@ -464,7 +469,7 @@ def persist_objects(meta_db, mdt_dbs0, ost_dbs0):
     print('done')
 
 
-def persist(metadata_db_fname, name_db_fname, mdt_dbs0, ost_dbs0):
+def persist(metadata_db_fname, mdt_dbs0, ost_dbs0):
     print('persisting objects')
     meta_db = sqlite3.connect(metadata_db_fname)
     meta_db.text_factory = str
@@ -472,7 +477,8 @@ def persist(metadata_db_fname, name_db_fname, mdt_dbs0, ost_dbs0):
     persist_objects(meta_db, mdt_dbs0, ost_dbs0)
 
     print('persisting names')
-    name_db = sqlite3.connect(name_db_fname)
+    # name_db = sqlite3.connect(name_db_fname)
+    name_db = meta_db  # Try out putting both the metadata and names tables into a singular metadata database.
     name_db.text_factory = str
     names.setup_name_table(name_db)
     persist_names(name_db, mdt_dbs0)
@@ -536,18 +542,18 @@ def main():
         parse(sys.argv[2:])
     else:
         mdt_dbs0, ost_dbs0 = parse(sys.argv[1:])
-        persist('metadata.db', 'name.db', mdt_dbs0, ost_dbs0)
+        persist('metadata.db', mdt_dbs0, ost_dbs0)
 
 
 if __name__ == '__main__':
     main()
 
-    # import sqlite3
-    # import names
-    # db = sqlite3.connect('name.db')
+    #import sqlite3
+    #import names
+    #db = sqlite3.connect('metadata.db')
     #
-    # print(names.fid_to_path(db, '0x200000402:0x100:0x0'))
-    # print(names.fid_to_path(db, '0x240000402:0x4e92:0x0'))
+    #print(names.fid_to_path(db, '0x200000402:0x100:0x0'))
+    #print(names.fid_to_path(db, '0x240000402:0x4e92:0x0'))
     # print(names.fid_to_path(db, '0x200000402:0x10a:0x0'))
     # print(names.fid_to_path(db, '0x240000402:0x4e97:0x0'))
     # print(names.fid_to_path(db, '0x200000402:0x10b:0x0'))
