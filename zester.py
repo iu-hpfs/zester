@@ -127,8 +127,8 @@ def parse_zdb(id0, inputfile, zfsobj_db=None, dataset_dicts=None):
             #                         'ZDB dump')
                 else:
                     print("dataset_name: " + dataset_name + " id: " + str(id0))
-                if dataset_dicts is not None:
-                    dataset_dicts[id0] = {}
+                    if dataset_dicts is not None:
+                        dataset_dicts[id0] = {}
 
             # Does this line starts a new object section?
             #
@@ -147,16 +147,18 @@ def parse_zdb(id0, inputfile, zfsobj_db=None, dataset_dicts=None):
             # If we see a new object line, save record and start parsing this object.
             if dataset_name and zfs_obj_match:
                 if obj_dict is not None:
-                    # Only objects with a Lustre path should be saved (i.e. those with trusted.link EAs).
-                    if obj_dict.get('trusted.link') is not None:
+                    if obj_type == 'f' and obj_dict.get('fid') is not None:
                         save_zfs_obj(zfsobj_cur, obj_dict, dataset_dicts)
-                count = count + 1
+                        count = count + 1
+                    elif obj_type == 'd' and obj_dict.get('trusted.link') is not None:
+                        save_zfs_obj(zfsobj_cur, obj_dict, dataset_dicts)
+                        count = count + 1
                 if count % 15000 == 0:
                     if zfsobj_db is not None:
                         zfsobj_db.commit()
                         zfsobj_cur = zfsobj_db.cursor()
-                    ts = time.clock()
-                    util.show_timing(count, start, ts)
+                        ts = time.clock()
+                        util.show_timing(count, start, ts)
                 in_fat_zap = False
                 data_line = inputfile.readline().rstrip()
 
@@ -266,20 +268,23 @@ def parse_zdb(id0, inputfile, zfsobj_db=None, dataset_dicts=None):
                                     int(parsed_lov['lmm_seq'], 16)) + ':' + hex(
                                     int(parsed_lov['lmm_object_id'],
                                         16)) + ':0x0'
+                                obj_dict['fid'] = fid
+
+                                # trusted.lma exists for 'files' in zdb that are not on filesystem
                                 # trusted.lma EA shows up before records with trusted.lov. Double-check fid calculation.
-                                if obj_dict.get('fid') is not None:
-                                    if obj_dict.get('fid') != fid:
-                                        print('Hey there! FIDs do not match between trusted.lma and trusted.link ' \
-                                              + 'for FID [{0:s]'.format(fid))
+                                # if obj_dict.get('fid') is not None:
+                                #    if obj_dict.get('fid') != fid:
+                                #        print('Hey there! FIDs do not match between trusted.lma and trusted.link ' \
+                                #              + 'for FID [{0:s]'.format(fid))
                             except:
                                 pass
-                        if name == 'trusted.lma':
-                            #  trusted.lma is u32:u32:fid in little-endian
-                            #  where fid is u64:u32:u32.
-                            #  So trim the first 8 bytes to leave the fid
-                            trusted_lma = pair[1]
-                            fid = str(fidinfo.decode_fid(trusted_lma[32:]))
-                            obj_dict['fid'] = fid
+                        # if name == 'trusted.lma':
+                        #     #  trusted.lma is u32:u32:fid in little-endian
+                        #     #  where fid is u64:u32:u32.
+                        #     #  So trim the first 8 bytes to leave the fid
+                        #     trusted_lma = pair[1]
+                        #     fid = str(fidinfo.decode_fid(trusted_lma[32:]))
+                        #     obj_dict['fid'] = fid
 
                         line = inputfile.readline().strip()
                     if "UNKNOWN OBJECT TYPE" in line:
@@ -304,8 +309,12 @@ def parse_zdb(id0, inputfile, zfsobj_db=None, dataset_dicts=None):
                     msg0 = "UNKNOWN 1-tab attribute: [dataset:{0}]" \
                            "[obj_id:{1}][{2}]"
                     raise Exception(msg0.format(dataset_name, obj_id, stripped))
-        if obj_dict.get('trusted.link') is not None:
+
+        if obj_type == 'f' and obj_dict.get('fid') is not None:
             save_zfs_obj(zfsobj_cur, obj_dict, dataset_dicts)
+        elif obj_type == 'd' and obj_dict.get('trusted.link') is not None:
+            save_zfs_obj(zfsobj_cur, obj_dict, dataset_dicts)
+
     except IOError as e:
         print("I/O error({0}): {1}".format(e.errno, e.strerror))
         raise
@@ -455,7 +464,6 @@ def persist_objects(meta_db, mdt_dbs0, ost_dbs0):
                     meta_cur = commit_meta_db(count, meta_cur, meta_db, start)
 
                     parsed_lov = lovinfo.parseLovInfo(binascii.hexlify(str(fidinfo.decoder(trusted_lov))))
-
                     size = get_total_size(ost_dbs0, parsed_lov)
 
                     metadata.save_metadata_obj(meta_cur, fid, uid, gid, ctime, mtime, atime, mode, size, obj_type)
@@ -548,12 +556,15 @@ def main():
 if __name__ == '__main__':
     main()
 
-    #import sqlite3
-    #import names
-    #db = sqlite3.connect('metadata.db')
-    #
-    #print(names.fid_to_path(db, '0x200000402:0x100:0x0'))
-    #print(names.fid_to_path(db, '0x240000402:0x4e92:0x0'))
+    import sqlite3
+    import names
+    db = sqlite3.connect('metadata.db')
+
+    print(names.fid_to_path(db, '0x200000402:0x100:0x0'))
+    print(names.fid_to_path(db, '0x240000402:0x4e92:0x0'))
     # print(names.fid_to_path(db, '0x200000402:0x10a:0x0'))
     # print(names.fid_to_path(db, '0x240000402:0x4e97:0x0'))
     # print(names.fid_to_path(db, '0x200000402:0x10b:0x0'))
+
+    print(names.path_to_fid(db, 'mdt0'))
+    print(names.path_to_fid(db, 'mdt0/a'))
