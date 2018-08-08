@@ -158,7 +158,8 @@ def parse_zdb(id0, inputfile, zfsobj_db=None, dataset_dicts=None):
                         zfsobj_db.commit()
                         zfsobj_cur = zfsobj_db.cursor()
                         ts = time.clock()
-                        util.show_timing(count, start, ts)
+                        if ts > start:
+                            util.show_timing(count, start, ts)
                 in_fat_zap = False
                 data_line = inputfile.readline().rstrip()
 
@@ -566,5 +567,5 @@ if __name__ == '__main__':
     # print(names.fid_to_path(db, '0x240000402:0x4e97:0x0'))
     # print(names.fid_to_path(db, '0x200000402:0x10b:0x0'))
 
-    print(names.path_to_fid(db, 'mdt0'))
-    print(names.path_to_fid(db, 'mdt0/a'))
+    # print(names.path_to_fid(db, 'mdt0'))
+    # print(names.path_to_fid(db, 'mdt0/a'))
