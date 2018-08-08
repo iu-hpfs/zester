@@ -270,22 +270,16 @@ def parse_zdb(id0, inputfile, zfsobj_db=None, dataset_dicts=None):
                                     int(parsed_lov['lmm_object_id'],
                                         16)) + ':0x0'
                                 obj_dict['fid'] = fid
-
-                                # trusted.lma exists for 'files' in zdb that are not on filesystem
-                                # trusted.lma EA shows up before records with trusted.lov. Double-check fid calculation.
-                                # if obj_dict.get('fid') is not None:
-                                #    if obj_dict.get('fid') != fid:
-                                #        print('Hey there! FIDs do not match between trusted.lma and trusted.link ' \
-                                #              + 'for FID [{0:s]'.format(fid))
                             except:
                                 pass
-                        # if name == 'trusted.lma':
-                        #     #  trusted.lma is u32:u32:fid in little-endian
-                        #     #  where fid is u64:u32:u32.
-                        #     #  So trim the first 8 bytes to leave the fid
-                        #     trusted_lma = pair[1]
-                        #     fid = str(fidinfo.decode_fid(trusted_lma[32:]))
-                        #     obj_dict['fid'] = fid
+                        # We need a fid for directories, which do not have a 'trusted.lov' EA
+                        if name == 'trusted.lma' and obj_type == 'd':
+                            #  trusted.lma is u32:u32:fid in little-endian
+                            #  where fid is u64:u32:u32.
+                            #  So trim the first 8 bytes to leave the fid
+                            trusted_lma = pair[1]
+                            fid = str(fidinfo.decode_fid(trusted_lma[32:]))
+                            obj_dict['fid'] = fid
 
                         line = inputfile.readline().strip()
                     if "UNKNOWN OBJECT TYPE" in line:
