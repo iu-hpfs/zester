@@ -485,6 +485,7 @@ def persist(metadata_db_fname, mdt_dbs0, ost_dbs0):
     name_db.text_factory = str
     names.setup_name_table(name_db)
     persist_names(name_db, mdt_dbs0)
+    names.clean_remote_dirs(name_db)
 
     print('building metadata indexes')
     meta_cur = meta_db.cursor()
