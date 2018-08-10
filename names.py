@@ -40,6 +40,47 @@ def populate_names(curs, parent_dir, parent_id):
         except OSError:
             pass
 
+def clean_remote_dirs(conn):
+    import re
+
+    # Search through the 'names' table for virtual remote directory objects that connect child directories and files
+    # to parent directories. Connect child objects to parent directories, and remove virtual directory objects from
+    # table. These remote directory objects have filenames like [FID]:<MDT IDX>, where FID is the remote object FID,
+    # and <MDT IDX> is a single digit index, matching the MDT index on which this object is located.
+
+    # Create a regular expression to match internal Lustre names for
+    # remote directory objects with their own FIDS.
+    remote_directory_object = re.compile(r'\[0x[0-9a-fA-F]+:0x[0-9a-fA-F]+:0x[0-9a-fA-F]+\]:[0-9]+')
+
+    # Search 'names' table for objects with names matching the expected SQL regexp '[0x%:0x%:0x%]:_'.
+    #  Keep track of rowid for matching rows, so they be easily cleaned up.
+
+    cur1 = conn.cursor()
+    cur2 = conn.cursor()
+    cur3 = conn.cursor()
+
+    rows = cur1.execute("select rowid, fid, name, parent_fid from names where name like '[0x%:0x%:0x%]:_'")
+
+    # Search 'names' table for objects with parent_fid equal to remote directory FID. Double-check that FID matches
+    # the filename regexp '[FID]:[0-9]'.
+
+    for row in rows:
+        (rowid, fid, name, parent_fid) = row
+
+        if re.match("\[{fid:s}\]:[0-9]".format(fid=fid), name):
+            children = cur2.execute("select rowid from names where parent_fid = ?", [fid])
+
+            for child_row in children:
+                child_rowid = child_row[0]
+                cur3.execute("update names set parent_fid = ? where rowid = ?", [parent_fid, child_rowid])
+
+        cur2.execute("delete from names where rowid = ?", [rowid])
+
+    conn.commit()
+
+    cur1.close()
+    cur2.close()
+    cur3.close()
 
 def fid_to_path(conn, srch_fid):
     import re
