@@ -1,3 +1,4 @@
+from __future__ import print_function
 import sqlite3
 import os
 import stat
@@ -50,10 +51,10 @@ def clean_remote_dirs(conn):
 
     # Create a regular expression to match internal Lustre names for
     # remote directory objects with their own FIDS.
-    remote_directory_object = re.compile(r'\[0x[0-9a-fA-F]+:0x[0-9a-fA-F]+:0x[0-9a-fA-F]+\]:[0-9]+')
+    # remote_directory_object = re.compile(r'\[0x[0-9a-fA-F]+:0x[0-9a-fA-F]+:0x[0-9a-fA-F]+\]:[0-9]+')
 
     # Search 'names' table for objects with names matching the expected SQL regexp '[0x%:0x%:0x%]:_'.
-    #  Keep track of rowid for matching rows, so they be easily cleaned up.
+    # Keep track of rowid for matching rows, so they be easily cleaned up.
 
     cur1 = conn.cursor()
     cur2 = conn.cursor()
@@ -137,10 +138,6 @@ def fid_to_path(conn, srch_fid):
             path_so_far.append(name)
             return helper(cur, parent_fid, path_so_far)
 
-    # Create a regular expression to match internal Lustre names for
-    # remote directory objects with their own FIDS.
-    remote_directory_object = re.compile(r'\[0x[0-9a-fA-F]+:0x[0-9a-fA-F]+:0x[0-9a-fA-F]+\]:[0-9]+')
-
     # Initialize an empty list for paths to the srch_fid, which will be appended to below.
     paths = []
     cur = conn.cursor()
@@ -160,10 +157,6 @@ def fid_to_path(conn, srch_fid):
         ls0.reverse()
         path_build = ""
         for name0 in ls0:
-            # Skip path names that match internal Lustre remote directory names,
-            # which aren't path of the real path.
-            if remote_directory_object.match(name0):
-                continue
             path_build = path_build + "/" + name0
 
         # Add the reconstructed path to the list of paths to return
@@ -173,6 +166,55 @@ def fid_to_path(conn, srch_fid):
     # Return all paths to the srch_fid
     return paths
 
+def path_to_fid(conn, srch_path):
+    import os.path
+
+    # Note that the value of the root (/) FID sequence number in the Lustre 2.x filesystem
+    # (located on MDT0) is 0x200000007. We'll need this to know where to start, as we pull
+    # picking our way through the path.
+    #
+    # See Lustre source file: include/lustre/lustre_idl.h
+    #     /**
+    #  * Note that reserved SEQ numbers below 12 will conflict with ldiskfs
+    #  * inodes in the IGIF namespace, so these reserved SEQ numbers can be
+    #  * used for other purposes and not risk collisions with existing inodes.
+    #  *
+    #  * Different FID Format
+    #  * http://arch.lustre.org/index.php?title=Interoperability_fids_zfs#NEW.0
+    #  */
+    # enum fid_seq {
+    # ...
+    # FID_SEQ_ROOT            = 0x200000007ULL,  /* Located on MDT0 */
+    # ...
+    #
+    # Note that the referenced link is currently only available at:
+    # http://wiki.old.lustre.org/index.php/Architecture_-_Interoperability_fids_zfs
+
+    path_list = []
+    head = srch_path
+    while head is not '':
+        head, tail = os.path.split(head)
+        path_list.append(tail)
+
+    path_list.reverse()
+    cur = conn.cursor()
+
+    # Start parent fid at the root FID
+    parent_fid = '0x200000007:0x1:0x0'
+    sql = "select fid from names where parent_fid = ? and name = ?"
+
+    for filename in path_list:
+        search_output = cur.execute(sql, [parent_fid, filename]).fetchone()
+        if search_output is not None:
+            parent_fid = search_output[0]
+        else:
+            parent_fid = ''
+            print('ERROR: No FID found for path: {0:s}'.format(srch_path),end='')
+            break
+
+    fid = parent_fid
+
+    return fid
 
 def dump(cur):
     for row in cur:
