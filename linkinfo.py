@@ -1,4 +1,5 @@
 #!/usr/bin/env python2
+# -*- coding: utf-8 -*-
 
 # Copyright [2018], The Trustees of Indiana University. Licensed under the
 # GNU General Public License Version 2 (see included COPYING.TXT). You
@@ -80,7 +81,37 @@
 #         __u32 f_ver;
 # };
 #
-
+# Consider the case of a file named 'Šħâŵƞ', which obviously has non-ASCII characters in it. The trusted.link entry
+# for a file with this name is given as:
+# trusted.link = \337\361\352\021\001\000\000\0004\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\034\000\000\000\002\000\001K\001\000\000\000\001\000\000\000\000\305\240\304\247\303\242\305\265\306\236
+#
+# which decomposes to:
+# magic:                  \337\361\352\021              \021\352\361\337              0x11eaf1df
+# hard link record count: \001\000\000\000              \000\000\000\001                       1
+# header length:          4\000\000\000\000\000\000\000 \000\000\000\000\000\000\0004         52  [Note: ord('4') = 52]
+# padding 1:              \000\000\000\000
+# padding 2:              \000\000\000\000
+#
+# record length:          \000\034                                                            28
+# parent fid sequence:    \000\000\000\002\000\001K\001 0x0000000200014b01           0x200014b01  [hex(ord('K')) = 0x4b]
+# parent fid objid:       \000\000\000\001              0x00000001                           0x1
+# parent fid version:     \000\000\000\000              0x00000000                           0x0
+# filename:               \305\240\304\247\303\242\305\265\306\236     Note: Filename here is 28 - 18 = 10 bytes long
+#
+# Python note:
+# >>> n='Šħâŵƞ'
+# >>> n2='\305\240\304\247\303\242\305\265\306\236'
+# >>> n
+# '\xc5\xa0\xc4\xa7\xc3\xa2\xc5\xb5\xc6\x9e'
+# >>> n2
+# '\xc5\xa0\xc4\xa7\xc3\xa2\xc5\xb5\xc6\x9e'
+# >>> n == n2
+# True
+# >>> print(n)
+# Šħâŵƞ
+# >>> print n2
+# Šħâŵƞ
+#
 
 def parse_link_info(trusted_link_hex):
     import binascii
@@ -165,7 +196,7 @@ def parse_link_info(trusted_link_hex):
         # print('Filename length: {0:d}'.format(filename_length))
         # print('Filename:        {0:s}'.format(filename))
 
-        results.append({'pfid': parent_fid, 'filename': unicode(filename)})
+        results.append({'pfid': parent_fid, 'filename': filename})
 
     return results
 
