@@ -168,6 +168,7 @@ def fid_to_path(conn, srch_fid):
 
 def path_to_fid(conn, srch_path):
     import os.path
+    import sys
 
     # Note that the value of the root (/) FID sequence number in the Lustre 2.x filesystem
     # (located on MDT0) is 0x200000007. We'll need this to know where to start, as we pull
@@ -209,7 +210,7 @@ def path_to_fid(conn, srch_path):
             parent_fid = search_output[0]
         else:
             parent_fid = ''
-            print('ERROR: No FID found for path: {0:s}'.format(srch_path),end='')
+            sys.stderr.write('ERROR: No FID found for path: {0:s}\n'.format(srch_path))
             break
 
     fid = parent_fid
