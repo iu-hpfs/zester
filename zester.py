@@ -11,6 +11,7 @@
 # Written by Kenrick Rawlings & Shawn Slavin for the High Performance File
 # Systems group in the Pervasive Technology Institute at Indiana University.
 
+from __future__ import print_function
 import binascii
 import fileinput
 import sqlite3
@@ -556,11 +557,16 @@ if __name__ == '__main__':
     import names
     db = sqlite3.connect('metadata.db')
 
-    print(names.fid_to_path(db, '0x200000402:0x100:0x0'))
-    print(names.fid_to_path(db, '0x240000402:0x4e92:0x0'))
+    # print(names.fid_to_path(db, '0x200000402:0x100:0x0'))
+    # print(names.fid_to_path(db, '0x240000402:0x4e92:0x0'))
     # print(names.fid_to_path(db, '0x200000402:0x10a:0x0'))
     # print(names.fid_to_path(db, '0x240000402:0x4e97:0x0'))
     # print(names.fid_to_path(db, '0x200000402:0x10b:0x0'))
-
+    #
     # print(names.path_to_fid(db, 'mdt0'))
     # print(names.path_to_fid(db, 'mdt0/a'))
+    # print(names.path_to_fid(db, 'mdt0/b'))
+    # print(names.path_to_fid(db, 'mdt0/z'))
+    # print(names.path_to_fid(db, 'mdt0/zz'))
+
+    db.close()
