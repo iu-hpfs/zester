@@ -1,4 +1,5 @@
 #!/usr/bin/env python2
+# -*- coding: utf-8 -*-
 
 # Copyright [2017], The Trustees of Indiana University. Licensed under the
 # GNU General Public License Version 2 (see included COPYING.TXT). You
@@ -28,8 +29,21 @@ import util
 
 # todo: implement these
 
-def get_fids_for_uid(uid):
-    raise NotImplementedError
+def get_fids_for_uid(conn, uid):
+    old_text_factory = conn.text_factory
+    conn.text_factory = str
+    cur = conn.cursor()
+
+    sql = "select fid from metadata where uid = ?"
+    search_output_list = cur.execute(sql, [uid])
+    fids = []
+    for (fid,) in search_output_list:
+        fids.append(fid)
+        # Some debugging info here
+        paths = names.fid_to_path(conn, fid)
+        for path in paths:
+            print('[{fid:s}] {path:s}'.format(fid=fid, path=path))
+    conn.text_factory = old_text_factory
 
 
 def get_entries_for_path(path):
@@ -557,16 +571,13 @@ if __name__ == '__main__':
     import names
     db = sqlite3.connect('metadata.db')
 
-    # print(names.fid_to_path(db, '0x200000402:0x100:0x0'))
-    # print(names.fid_to_path(db, '0x240000402:0x4e92:0x0'))
-    # print(names.fid_to_path(db, '0x200000402:0x10a:0x0'))
-    # print(names.fid_to_path(db, '0x240000402:0x4e97:0x0'))
-    # print(names.fid_to_path(db, '0x200000402:0x10b:0x0'))
-    #
-    # print(names.path_to_fid(db, 'mdt0'))
-    # print(names.path_to_fid(db, 'mdt0/a'))
-    # print(names.path_to_fid(db, 'mdt0/b'))
-    # print(names.path_to_fid(db, 'mdt0/z'))
-    # print(names.path_to_fid(db, 'mdt0/zz'))
+    for path in names.fid_to_path(db, '0x200014b01:0x1:0x0'):
+        print(path)
+
+    for path in names.fid_to_path(db, '0x200014b01:0x2:0x0'):
+        print(path)
+
+    print(names.path_to_fid(db, 'slavin/unicode-test'))
+    print(names.path_to_fid(db, 'slavin/unicode-test/Šħâŵƞ'))
 
     db.close()
