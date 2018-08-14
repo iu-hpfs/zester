@@ -12,95 +12,83 @@
 # Systems group in the Pervasive Technology Institute at Indiana University.
 
 import sqlite3
-import sys
+import names
 
-def doCompare(zester_db_fname,posix_db_fname, prefix):
-    print('doCompare', (zester_db_fname, posix_db_fname, prefix))
-    zester_db = sqlite3.connect(zester_db_fname, isolation_level=None)
-    zester_db.text_factory = str
-    posix_db = sqlite3.connect(posix_db_fname, isolation_level=None)
-    posix_db.text_factory = str
 
-    match_file       = open("match.txt", "w")
-    posix_only_file  = open("posix_only.txt", "w")
-    zester_only_file = open("zester_only.txt", "w")
+def check_time(time0, time1):
+    return abs(int(time0) - int(time1)) <= 2
 
-    query = "SELECT path, uid, gid, ctime, mtime, atime, mode, type, size, fid FROM [metadata] ORDER BY PATH"
 
+def check_zester_to_posix(posix_db, zester_db):
     zester_cursor = zester_db.cursor()
-    zester_cursor.execute(query)
-
-    posix_cursor = posix_db.cursor()
-    posix_cursor.execute(query)
-
-    zester_curr_row = zester_cursor.fetchone()
-    posix_curr_row = posix_cursor.fetchone()
-
-    count = 0
-    matchCount = 0
-    posixCount = 0
-    zesterCount = 0
-    while (zester_curr_row != None) or (posix_curr_row != None):
-        count = count + 1
-        if zester_curr_row == None:
-            posixCount = posixCount + 1
-            posix_only_file.write(str(posix_curr_row))
-            posix_only_file.write("\n")
+    zester_query = "SELECT fid, uid, gid, ctime, mtime, atime, mode, size FROM [metadata] ORDER BY fid"
+    zester_count = 0
+    for zester_curr_row in zester_cursor.execute(zester_query):
+        zester_count = zester_count + 1
+        (zester_fid, zester_uid, zester_gid, zester_ctime, zester_mtime, zester_atime, zester_mode,
+         zester_size) = zester_curr_row
+        for zester_path in names.fid_to_path(zester_db, zester_fid):
+            posix_search_path = zester_path.replace('/ROOT/', './', 1)
+            posix_cursor = posix_db.cursor()
+            posix_query = "SELECT uid, gid, ctime, mtime, atime, mode, size FROM [metadata] where path = ?"
+            posix_cursor.execute(posix_query, [posix_search_path])
             posix_curr_row = posix_cursor.fetchone()
-        elif posix_curr_row == None:
-            zesterCount = zesterCount + 1
-            zester_only_file.write(str(zester_curr_row))
-            zester_only_file.write("\n")
-            zester_curr_row = zester_cursor.fetchone()
-        else:
-            zester_curr_path = prefix + zester_curr_row[0]
-            posix_curr_path = posix_curr_row[0]
-            if zester_curr_path == posix_curr_path:
-                (zester_path, zester_uid, zester_gid, zester_ctime, zester_mtime, zester_atime, zester_mode, zester_type, zester_size, zester_fid) = zester_curr_row
-                (posix_path,  posix_uid,  posix_gid,  posix_ctime,  posix_mtime,  posix_atime,  posix_mode,  posix_type,  posix_size, posix_fid) = posix_curr_row
-                match_file.write(zester_curr_path + " ")
-                if abs(int(zester_atime) - int(posix_atime)) > 2:
-                    match_file.write(" (!!atime: Z: " + str(zester_atime) + " P: " + str(posix_atime) + ")")
-                if abs(int(zester_mtime) - int(posix_mtime)) > 2:
-                    match_file.write(" (!!mtime: Z: " + str(zester_mtime) + " P: " +  str(posix_mtime) + ")")
-                if abs(int(zester_ctime) - int(posix_ctime)) > 2:
-                    match_file.write(" (!!ctime: Z: " + str(zester_ctime) + " P: " + str(posix_ctime) + ")")
-                if str(zester_uid) != str(posix_uid):
-                    match_file.write(" (!!uid: Z: " + str(zester_uid) + " P: " + str(posix_uid) + ")")
-                if str(zester_gid) != str(posix_gid):
-                    match_file.write(" (!!gid: Z: " + str(zester_gid) + " P: " + str(posix_gid) + ")")
-                if str(zester_size) != str(posix_size):
-                    match_file.write(" (!!size: Z: " + str(zester_size) + " P: " + str(posix_size) + ")")
-                match_file.write("\n")
-                matchCount = matchCount + 1
-                zester_curr_row = zester_cursor.fetchone()
-                posix_curr_row = posix_cursor.fetchone()
-            elif zester_curr_path < posix_curr_path:
-                zesterCount = zesterCount + 1
-                zester_only_file.write(str(zester_curr_row))
-                zester_only_file.write("\n")
-                zester_curr_row = zester_cursor.fetchone()
-            else:
-                posixCount = posixCount + 1
-                posix_only_file.write(str(posix_curr_row))
-                posix_only_file.write("\n")
-                posix_curr_row = posix_cursor.fetchone()
-    print('count: ', count)
-    print('matchCount: ', matchCount)
-    print('posixCount: ', posixCount)
-    print('zesterCount: ', zesterCount)
-    zester_cursor.close()
-    zester_db.close()
+            (posix_uid, posix_gid, posix_ctime, posix_mtime, posix_atime, posix_mode, posix_size) = posix_curr_row
+            if not check_time(posix_atime, zester_atime):
+                print('!atime', posix_search_path, zester_fid, posix_atime, zester_atime)
+            if not check_time(posix_ctime, zester_ctime):
+                print('!ctime', posix_search_path, zester_fid, posix_ctime, zester_ctime)
+            if not check_time(posix_mtime, zester_mtime):
+                print('!mtime', posix_search_path, zester_fid, posix_mtime, zester_mtime)
+            if posix_mode != zester_mode: print('!mode', posix_search_path, zester_fid)
+            if posix_size != zester_size: print('!size', posix_search_path, zester_fid)
+            if posix_uid != zester_uid: print('!uid', posix_search_path, zester_fid)
+            if posix_gid != zester_gid: print('!gid', posix_search_path, zester_fid)
 
-    posix_cursor.close()
-    posix_db.close()
 
-    match_file.close()
-    posix_only_file.close()
-    zester_only_file.close()
+def check_posix_to_zester(posix_db, zester_db):
+    posix_cursor = posix_db.cursor()
+    posix_query = "SELECT path, uid, gid, ctime, mtime, atime, mode, size FROM [metadata] ORDER BY path"
+    posix_count = 0
+    for posix_curr_row in posix_cursor.execute(posix_query):
+        posix_count = posix_count + 1
+        (posix_path, posix_uid, posix_gid, posix_ctime, posix_mtime, posix_atime, posix_mode,
+         posix_size) = posix_curr_row
+        zester_search_path = posix_path.replace('./', '', 1)
+        if not zester_search_path.startswith('.nodehealth'):
+            try:
+                zester_fid = names.path_to_fid(zester_db, str(zester_search_path))
+                zester_cursor = zester_db.cursor()
+                zester_query = "SELECT uid, gid, ctime, mtime, atime, mode, size FROM [metadata] where fid = ?"
+                zester_result = zester_cursor.execute(zester_query, [zester_fid])
+                zester_curr_row = zester_result.fetchone()
+                if zester_curr_row is None:
+                    print("not found", zester_search_path)
+                else:
+                    (zester_uid, zester_gid, zester_ctime, zester_mtime, zester_atime, zester_mode,
+                     zester_size) = zester_curr_row
+                    if not check_time(posix_atime, zester_atime): print(
+                        '!atime', zester_search_path, zester_fid, posix_atime, zester_atime)
+                    if not check_time(posix_ctime, zester_ctime): print(
+                        '!ctime', zester_search_path, zester_fid, posix_ctime, zester_ctime)
+                    if not check_time(posix_mtime, zester_mtime): print(
+                        '!mtime', zester_search_path, zester_fid, posix_mtime, zester_mtime)
+                    if posix_mode != zester_mode: print('!mode', zester_search_path, zester_fid)
+                    if posix_size != zester_size: print('!size', zester_search_path, zester_fid)
+                    if posix_uid != zester_uid: print('!uid', zester_search_path, zester_fid)
+                    if posix_gid != zester_gid: print('!gid', zester_search_path, zester_fid)
+            except UnicodeEncodeError:
+                print('unicode exception', zester_search_path)
 
-zesterDbFname = 'metadata.db'
-posixDbFname  = 'trystat.db'
+
+def doCompare(zester_db_fname, posix_db_fname):
+    posix_db = sqlite3.connect(posix_db_fname)
+    zester_db = sqlite3.connect(zester_db_fname)
+    print ('check_posix_to_zester_______________')
+    check_posix_to_zester(posix_db, zester_db)
+    print ('check_zester_to_posix_______________')
+    check_zester_to_posix(posix_db, zester_db)
+
 
 if __name__ == '__main__':
-    doCompare(zesterDbFname, posixDbFname, sys.argv[1])
+    doCompare('metadata.db', 'stats.db')
