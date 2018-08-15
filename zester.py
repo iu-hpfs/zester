@@ -30,8 +30,8 @@ import util
 # todo: implement these
 
 def get_fids_for_uid(conn, uid):
-    old_text_factory = conn.text_factory
-    conn.text_factory = str
+    #old_text_factory = conn.text_factory
+    #conn.text_factory = str
     cur = conn.cursor()
 
     sql = "select fid from metadata where uid = ?"
@@ -43,7 +43,7 @@ def get_fids_for_uid(conn, uid):
         paths = names.fid_to_path(conn, fid)
         for path in paths:
             print('[{fid:s}] {path:s}'.format(fid=fid, path=path))
-    conn.text_factory = old_text_factory
+    #conn.text_factory = old_text_factory
 
 
 def get_entries_for_path(path):
@@ -64,7 +64,7 @@ def get_entries_for_uid_in_path(uid, path):
 
 def open_zfsobj_db(zfsobj_db_fame):
     zfsobj_db = sqlite3.connect(zfsobj_db_fame)
-    zfsobj_db.text_factory = str
+    #zfsobj_db.text_factory = str
     return zfsobj_db
 
 
@@ -490,14 +490,14 @@ def persist_objects(meta_db, mdt_dbs0, ost_dbs0):
 def persist(metadata_db_fname, mdt_dbs0, ost_dbs0):
     print('persisting objects')
     meta_db = sqlite3.connect(metadata_db_fname)
-    meta_db.text_factory = str
+    #meta_db.text_factory = str
     metadata.setup_metadata_db(meta_db)
     persist_objects(meta_db, mdt_dbs0, ost_dbs0)
 
     print('persisting names')
     # name_db = sqlite3.connect(name_db_fname)
     name_db = meta_db  # Try out putting both the metadata and names tables into a singular metadata database.
-    name_db.text_factory = str
+    #name_db.text_factory = str
     names.setup_name_table(name_db)
     persist_names(name_db, mdt_dbs0)
     names.clean_remote_dirs(name_db)

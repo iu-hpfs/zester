@@ -191,9 +191,10 @@ def path_to_fid(conn, srch_path):
     # Note that the referenced link is currently only available at:
     # http://wiki.old.lustre.org/index.php/Architecture_-_Interoperability_fids_zfs
 
+    # Make certain that we're working with unicode strings. This will not be necessary with Python 3.
     path_list = []
-    head = srch_path
-    while head is not '':
+    head = unicode(srch_path, encoding='utf-8')
+    while head is not u'':
         head, tail = os.path.split(head)
         path_list.append(tail)
 
