@@ -575,7 +575,6 @@ if __name__ == '__main__':
     import sqlite3
     import names
     db = sqlite3.connect('metadata.db')
-    db.text_factory = str
 
     for path in names.fid_to_path(db, '0x200014b01:0x1:0x0'):
         print(path)
