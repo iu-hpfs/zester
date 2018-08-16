@@ -477,6 +477,11 @@ def persist_objects(meta_db, mdt_dbs0, ost_dbs0):
                     size = get_total_size(ost_dbs0, parsed_lov)
 
                     metadata.save_metadata_obj(meta_cur, fid, uid, gid, ctime, mtime, atime, mode, size, obj_type)
+            elif obj_type == 'd':
+                count = count + 1
+                size = 0
+                metadata.save_metadata_obj(meta_cur, fid, uid, gid, ctime, mtime, atime, mode, size, obj_type)
+
             mdt_curr_row = mdt_cursor.fetchone()
         mdt_cursor.close()
     print('total ' + str(count))
@@ -570,6 +575,7 @@ if __name__ == '__main__':
     import sqlite3
     import names
     db = sqlite3.connect('metadata.db')
+    db.text_factory = str
 
     for path in names.fid_to_path(db, '0x200014b01:0x1:0x0'):
         print(path)
