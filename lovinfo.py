@@ -191,7 +191,7 @@ def parseLovInfo(hexLov):
         ostIndex = str(int(ostIndex, 16))
 
 
-# For the record, I am completely confused about where the first 8 bytes
+# For the record, I am completely confused about whether the first 8 bytes
 # is the group or objid value. The following seems to produce results
 # consistent with lfs getstripe output, but I can't figure out why.
 
