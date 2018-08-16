@@ -155,9 +155,9 @@ def fid_to_path(conn, srch_fid):
         # have different paths, and possibly different parent fids. So, we loop over each
         # case.
         ls0.reverse()
-        path_build = ""
+        path_build = ''
         for name0 in ls0:
-            path_build = path_build + "/" + name0
+            path_build = path_build + '/' + name0
 
         # Add the reconstructed path to the list of paths to return
         paths.append(path_build)
