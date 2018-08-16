@@ -188,7 +188,8 @@ def parse_link_info(trusted_link_hex):
         istop = istart + 2 * filename_length
         j = istop
 
-        filename = binascii.unhexlify(trusted_link_hex[istart:istop])
+        # Byte-string filenames from trusted.link values, as written by zdb, are encoded UTF-8.
+        filename = binascii.unhexlify(trusted_link_hex[istart:istop]).decode('utf-8')
 
         # Some debugging output
         # print('Parent FID:      [{0:s}]'.format(parent_fid))
