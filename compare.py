@@ -16,7 +16,7 @@ import names
 
 
 def check_time(time0, time1):
-    return abs(int(time0) - int(time1)) <= 2
+    return abs(int(time0) - int(time1)) <= 3700
 
 
 def check_zester_to_posix(posix_db, zester_db):
@@ -57,13 +57,14 @@ def check_posix_to_zester(posix_db, zester_db):
         zester_search_path = posix_path.replace('./', '', 1)
         if not zester_search_path.startswith('.nodehealth'):
             try:
-                zester_fid = names.path_to_fid(zester_db, str(zester_search_path))
+                zester_fid = names.path_to_fid(zester_db, zester_search_path)
                 zester_cursor = zester_db.cursor()
                 zester_query = "SELECT uid, gid, ctime, mtime, atime, mode, size FROM [metadata] where fid = ?"
                 zester_result = zester_cursor.execute(zester_query, [zester_fid])
                 zester_curr_row = zester_result.fetchone()
                 if zester_curr_row is None:
                     print("not found", zester_search_path)
+                    print(zester_search_path, zester_fid)
                 else:
                     (zester_uid, zester_gid, zester_ctime, zester_mtime, zester_atime, zester_mode,
                      zester_size) = zester_curr_row
