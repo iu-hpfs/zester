@@ -468,20 +468,24 @@ def persist_objects(meta_db, mdt_dbs0, ost_dbs0):
         while mdt_curr_row is not None:
             (id0, uid, gid, ctime, mtime, atime, mode, obj_type, size, fid,
              trusted_link, trusted_lov) = mdt_curr_row
-            if trusted_lov is not None:
-                if obj_type == 'f':
-                    count = count + 1
-                    meta_cur = commit_meta_db(count, meta_cur, meta_db, start)
-
+            if obj_type == 'f':
+                if trusted_lov is not None:
                     parsed_lov = lovinfo.parseLovInfo(binascii.hexlify(str(fidinfo.decoder(trusted_lov))))
                     size = get_total_size(ost_dbs0, parsed_lov)
-
-                    metadata.save_metadata_obj(meta_cur, fid, uid, gid, ctime, mtime, atime, mode, size, obj_type)
+                else:
+                    # Flag any cases where no trusted_lov exists from which to calculate file size.
+                    size = -1
+                count = count + 1
+                metadata.save_metadata_obj(meta_cur, fid, uid, gid, ctime, mtime, atime, mode, size, obj_type)
             elif obj_type == 'd':
                 count = count + 1
                 size = 0
                 metadata.save_metadata_obj(meta_cur, fid, uid, gid, ctime, mtime, atime, mode, size, obj_type)
 
+            # Check to see if it's time to force a commit, and if so, do it.
+            meta_cur = commit_meta_db(count, meta_cur, meta_db, start)
+
+            # Grab the next row.
             mdt_curr_row = mdt_cursor.fetchone()
         mdt_cursor.close()
     print('total ' + str(count))
