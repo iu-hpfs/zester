@@ -2,9 +2,9 @@ def setup_metadata_db(meta_db):
     meta_cur = meta_db.cursor()
     meta_cur.execute('drop table if exists metadata')
     meta_cur.execute('''
-        CREATE TABLE metadata (fid TEXT primary key, uid INTEGER, gid INTEGER, 
-        ctime INTEGER, mtime INTEGER, atime INTEGER, mode INTEGER,
-        size INTEGER, obj_type TEXT)
+        create table metadata (fid text primary key, uid integer, gid integer, 
+        ctime integer, mtime integer, atime integer, mode integer,
+        size integer, obj_type text)
         ''')
     meta_cur.close()
     meta_cur = meta_db.cursor()

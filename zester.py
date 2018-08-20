@@ -79,11 +79,11 @@ def setup_zfsobj_db(zfsobj_db_fame):
     zfsobj_db = open_zfsobj_db(zfsobj_db_fame)
     zfsobj_cur = zfsobj_db.cursor()
     zfsobj_cur.execute('drop index if exists zfsobj_trustedlov_index')
-    zfsobj_cur.execute('DROP TABLE IF EXISTS zfsobj')
-    zfsobj_cur.execute('''CREATE TABLE zfsobj (id INTEGER PRIMARY KEY,
-                        uid INTEGER, gid INTEGER, ctime INTEGER, mtime INTEGER, 
-                        atime INTEGER, mode INTEGER, obj_type TEXT, size INTEGER, 
-                        fid TEXT, trusted_link TEXT, trusted_lov TEXT)
+    zfsobj_cur.execute('drop table if exists zfsobj')
+    zfsobj_cur.execute('''create table zfsobj (id integer primary key,
+                        uid integer, gid integer, ctime integer, mtime integer, 
+                        atime integer, mode integer, obj_type text, size integer, 
+                        fid text, trusted_link text, trusted_lov text)
                         ''')
     zfsobj_cur.close()
     return zfsobj_db
@@ -95,10 +95,10 @@ def save_zfs_obj(zfs_cur, obj_dict, dataset_dicts):
     if dataset_dicts is not None:
         dataset_dicts[id0][obj_id] = obj_dict
     if zfs_cur is not None:
-        cmd = '''INSERT INTO [zfsobj] 
+        cmd = '''insert into [zfsobj] 
                  (id, uid, gid, ctime, mtime, atime, mode, obj_type, size,
                  fid, trusted_link, trusted_lov)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'''
+                 values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'''
         if True:  # 'trusted.fid' in obj_dict or 'trusted.lov' in obj_dict:
             zfs_cur.execute(cmd, (
                 obj_id, obj_dict.get('uid', None), obj_dict.get('gid', None),
@@ -361,8 +361,8 @@ def lookup(ost_dbs0, ost_idx, fid):
     #    for fatzap_row in all_fatzap:
     #        (id, from_id, to_id, zfs_type) = fatzap_row
     zfsobj_cursor = ost_zfsobj_db.cursor()
-    zfsobj_cursor.execute('''SELECT id, uid, gid, ctime, mtime, atime, mode, size,
-        fid, trusted_link, trusted_lov FROM zfsobj where fid like "''' + partialfid + '"')
+    zfsobj_cursor.execute('''select id, uid, gid, ctime, mtime, atime, mode, size,
+        fid, trusted_link, trusted_lov from zfsobj where fid like "''' + partialfid + '"')
     all_row = zfsobj_cursor.fetchall()
     zfsobj_cursor.close()
 
@@ -425,7 +425,7 @@ def persist_names(name_db, mdt_dbs0):
     names.insert_name(name_cur, '0x200000007:0x1:0x0', 'ROOT', '')
 
     for mdt_dataset_id, mdt_dataset_db in mdt_dbs0.items():
-        query = '''SELECT fid, trusted_link from zfsobj'''
+        query = '''select fid, trusted_link from zfsobj'''
         mdt_cursor = mdt_dataset_db.cursor()
         mdt_cursor.execute(query)
         mdt_curr_row = mdt_cursor.fetchone()
@@ -460,8 +460,8 @@ def persist_objects(meta_db, mdt_dbs0, ost_dbs0):
     start = time.clock()
     meta_cur = meta_db.cursor()
     for mdt_dataset_id, mdt_dataset_db in mdt_dbs0.items():
-        query = '''SELECT id, uid, gid, ctime, mtime, atime, mode, obj_type,
-                  size, fid, trusted_link, trusted_lov FROM zfsobj'''
+        query = '''select id, uid, gid, ctime, mtime, atime, mode, obj_type,
+                  size, fid, trusted_link, trusted_lov from zfsobj'''
         mdt_cursor = mdt_dataset_db.cursor()
         mdt_cursor.execute(query)
         mdt_curr_row = mdt_cursor.fetchone()
