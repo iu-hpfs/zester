@@ -29,6 +29,17 @@ import util
 
 # todo: implement these
 
+def fid2int(fid):
+    (fidseq, fidoid, fidver) = fid.rsplit(':', 2)
+    fidseq = int(fidseq, 16)
+    fidoid = int(fidoid, 16)
+    fidver = int(fidver, 16)
+    return (fidseq, fidoid, fidver)
+
+def int2fid(fidseq, fidoid, fidver=0x0):
+    fid = hex(fidseq) + ':' + hex(fidoid) + ':' + hex(fidver)
+    return fid
+
 def get_fids_for_uid(conn, uid):
     #old_text_factory = conn.text_factory
     #conn.text_factory = str
@@ -83,7 +94,7 @@ def setup_zfsobj_db(zfsobj_db_fame):
     zfsobj_cur.execute('''create table zfsobj (id integer primary key,
                         uid integer, gid integer, ctime integer, mtime integer, 
                         atime integer, mode integer, obj_type text, size integer, 
-                        fid text, trusted_link text, trusted_lov text)
+                        fid text, fidseq integer, fidoid integer, fidver integer, trusted_link text, trusted_lov text)
                         ''')
     zfsobj_cur.close()
     return zfsobj_db
@@ -97,16 +108,20 @@ def save_zfs_obj(zfs_cur, obj_dict, dataset_dicts):
     if zfs_cur is not None:
         cmd = '''insert into [zfsobj] 
                  (id, uid, gid, ctime, mtime, atime, mode, obj_type, size,
-                 fid, trusted_link, trusted_lov)
-                 values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'''
-        if True:  # 'trusted.fid' in obj_dict or 'trusted.lov' in obj_dict:
-            zfs_cur.execute(cmd, (
-                obj_id, obj_dict.get('uid', None), obj_dict.get('gid', None),
-                obj_dict.get('ctime', None), obj_dict.get('mtime', None),
-                obj_dict.get('atime', None), obj_dict.get('mode', None),
-                obj_dict.get('obj_type', None), obj_dict.get('size', None),
-                obj_dict.get('fid', None), obj_dict.get('trusted.link', None),
-                obj_dict.get('trusted.lov', None)))
+                 fid, fidseq, fidoid, fidver, trusted_link, trusted_lov)
+                 values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'''
+
+        fid = obj_dict.get('fid', None)
+        (fidseq, fidoid, fidver) = fid2int(fid)
+
+        zfs_cur.execute(cmd, (
+            obj_id, obj_dict.get('uid', None), obj_dict.get('gid', None),
+            obj_dict.get('ctime', None), obj_dict.get('mtime', None),
+            obj_dict.get('atime', None), obj_dict.get('mode', None),
+            obj_dict.get('obj_type', None), obj_dict.get('size', None),
+            fid, fidseq, fidoid, fidver,
+            obj_dict.get('trusted.link', None),
+            obj_dict.get('trusted.lov', None)))
 
 
 # parsing____
@@ -340,12 +355,13 @@ def parse_zdb(id0, inputfile, zfsobj_db=None, dataset_dicts=None):
 #    query = 'select id, from_id, to_id, zfs_type from fatzap where ' \
 #            'from_id=' + str(objId) + ' and zfs_type="Regular File"'
 # todo: switch to new methodology
-def lookup(ost_dbs0, ost_idx, fid):
+# def lookup(ost_dbs0, ost_idx, fid):
+def lookup(ost_dbs0, ost_idx, fidseq, fidoid):
     ost_zfsobj_db = ost_dbs0[ost_idx]
     # fid.rsplit(':',1)[0] trims off the version, which is different for each
     # ost stripe of the FID with a 0x0 version.
 
-    partialfid = fid.rsplit(':', 1)[0] + ':%'
+    # partialfid = fid.rsplit(':', 1)[0] + ':%'
     # Note: It's important to 
     #    query = 'select id, from_id, to_id, zfs_type from fatzap where ' \
     #            'fid like "' + partialfid + '" and zfs_type="Regular File"'
@@ -361,20 +377,17 @@ def lookup(ost_dbs0, ost_idx, fid):
     #    for fatzap_row in all_fatzap:
     #        (id, from_id, to_id, zfs_type) = fatzap_row
     zfsobj_cursor = ost_zfsobj_db.cursor()
-    zfsobj_cursor.execute('''select id, uid, gid, ctime, mtime, atime, mode, size,
-        fid, trusted_link, trusted_lov from zfsobj where fid like "''' + partialfid + '"')
+    zfsobj_cursor.execute('''select size from zfsobj where fidseq = ? and fidoid = ?''', [fidseq, fidoid])
     all_row = zfsobj_cursor.fetchall()
     zfsobj_cursor.close()
 
     if len(all_row) > 1:
-        print(
-        'More than one partial fid match to [', partialfid, '] in ost index',
-        ost_idx)
+        fid = int2fid(fidseq, fidoid, 0x0)
+        print('[zester.lookup()]: More than one partial fid match to [{0:s}] in ost index {1:d}.'.format(fid, ost_idx))
 
     size_of_stripes_on_ost = 0
     for zfsobj_row in all_row:
-        (id0, uid, gid, ctime, mtime, atime, mode, size, fid, trusted_link,
-         trusted_lov) = zfsobj_row
+        (size,) = zfsobj_row
         size_of_stripes_on_ost = size_of_stripes_on_ost + size
 
     return size_of_stripes_on_ost
@@ -384,14 +397,12 @@ def get_total_size(ost_dbs0, parsed_lov):
     total_size = 0
     parsed_raw = parsed_lov['ost_index_objids']
     ost_index_objids = map(lambda tup: (int(tup[0]), int(tup[1])), parsed_raw)
-    # This is where we can make client calls to lookup sizes in parallel...
-    for lovOstIdx, lovObjIdx in ost_index_objids:
-        #                total_size = total_size + lookup(ost_dbs, lovOstIdx,
-        #                                               lovObjIdx)
 
-        fid = hex(int(parsed_lov['lmm_seq'], 16)) + ':' + hex(
-            int(parsed_lov['lmm_object_id'], 16)) + ':0x0'
-        total_size = total_size + lookup(ost_dbs0, lovOstIdx, fid)
+    for lov_ost_idx, lov_obj_idx in ost_index_objids:
+        fidseq = int(parsed_lov['lmm_seq'], 16)
+        fidoid = int(parsed_lov['lmm_object_id'], 16)
+        total_size = total_size + lookup(ost_dbs0, lov_ost_idx, fidseq, fidoid)
+
     return total_size
 
 
@@ -482,6 +493,9 @@ def persist_objects(meta_db, mdt_dbs0, ost_dbs0):
                 size = 0
                 metadata.save_metadata_obj(meta_cur, fid, uid, gid, ctime, mtime, atime, mode, size, obj_type)
 
+            if count % 100 == 0:
+                print('Persisted {0:08d} records.'.format(count))
+
             # Check to see if it's time to force a commit, and if so, do it.
             meta_cur = commit_meta_db(count, meta_cur, meta_db, start)
 
@@ -536,6 +550,8 @@ def parse(file_paths):
         zfsobj_cur = zfsobj_db.cursor()
         zfsobj_cur.execute('create index zfsobj_trustedlov_index on '
                            'zfsobj (trusted_lov)')
+        zfsobj_cur.execute('create index zfsobj_fid_index on zfsobj (fidseq, fidoid, fidver)')
+
         #        zfsobj_cur.execute('create index fatzap_from_id_index on fatzap '
         #                           '(from_id)')
         zfsobj_db.commit()
