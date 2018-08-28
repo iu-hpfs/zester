@@ -86,8 +86,8 @@ metadata [fid, uid, gid, ..., size]
 '''
 
 
-def setup_zfsobj_db(zfsobj_db_fame):
-    zfsobj_db = open_zfsobj_db(zfsobj_db_fame)
+def setup_zfsobj_db(zfsobj_db_fname):
+    zfsobj_db = open_zfsobj_db(zfsobj_db_fname)
     zfsobj_cur = zfsobj_db.cursor()
     zfsobj_cur.execute('drop index if exists zfsobj_trustedlov_index')
     zfsobj_cur.execute('drop table if exists zfsobj')
@@ -99,12 +99,16 @@ def setup_zfsobj_db(zfsobj_db_fame):
     zfsobj_cur.close()
     return zfsobj_db
 
+def create_zfsobj_db_indices(zfsobj_db):
+    zfsobj_cur = zfsobj_db.cursor()
+    zfsobj_cur.execute('create index zfsobj_trustedlov_index on '
+                       'zfsobj (trusted_lov)')
+    zfsobj_cur.execute('create index zfsobj_fid_index on zfsobj (fidseq, fidoid, fidver)')
+    zfsobj_db.commit()
+    zfsobj_cur.close()
 
-def save_zfs_obj(zfs_cur, obj_dict, dataset_dicts):
-    id0 = obj_dict['id']
+def save_zfs_obj(zfs_cur, obj_dict):
     obj_id = obj_dict['obj_id']
-    if dataset_dicts is not None:
-        dataset_dicts[id0][obj_id] = obj_dict
     if zfs_cur is not None:
         cmd = '''insert into [zfsobj] 
                  (id, uid, gid, ctime, mtime, atime, mode, obj_type, size,
@@ -126,17 +130,18 @@ def save_zfs_obj(zfs_cur, obj_dict, dataset_dicts):
 
 # parsing____
 
-def parse_zdb(id0, inputfile, zfsobj_db=None, dataset_dicts=None):
+def parse_zdb(zdb_fname, zfsobj_db_fname):
     count = 0
     obj_id = None
     start = time.clock()
     obj_dict = None
     dataset_name = None
-    in_fat_zap = False
-    if zfsobj_db is not None:
-        zfsobj_cur = zfsobj_db.cursor()
-    else:
-        zfsobj_cur = None
+
+    inputfile = fileinput.input([zdb_fname])
+
+    zfsobj_db = setup_zfsobj_db(zfsobj_db_fname)
+    zfsobj_cur = zfsobj_db.cursor()
+
     try:
         for line in inputfile:
             if line.startswith("Metaslabs:"):
@@ -145,7 +150,7 @@ def parse_zdb(id0, inputfile, zfsobj_db=None, dataset_dicts=None):
                 # todo: (old) parse and store?
                 dataset_name = None
             if line.startswith("Dataset mos [META]"):
-                datasetName = None
+                dataset_name = None
             if line.startswith("Dataset"):
                 dataset_name = line.split(" ")[1]
                 if '/' not in dataset_name:
@@ -156,9 +161,8 @@ def parse_zdb(id0, inputfile, zfsobj_db=None, dataset_dicts=None):
             #                         'unexpected mulitple datasets in '
             #                         'ZDB dump')
                 else:
-                    print("dataset_name: " + dataset_name + " id: " + str(id0))
-                    if dataset_dicts is not None:
-                        dataset_dicts[id0] = {}
+                    pass
+                    print("dataset_name: " + dataset_name)
 
             # Does this line starts a new object section?
             #
@@ -178,10 +182,10 @@ def parse_zdb(id0, inputfile, zfsobj_db=None, dataset_dicts=None):
             if dataset_name and zfs_obj_match:
                 if obj_dict is not None:
                     if obj_type == 'f' and obj_dict.get('fid') is not None:
-                        save_zfs_obj(zfsobj_cur, obj_dict, dataset_dicts)
+                        save_zfs_obj(zfsobj_cur, obj_dict)
                         count = count + 1
                     elif obj_type == 'd' and obj_dict.get('trusted.link') is not None:
-                        save_zfs_obj(zfsobj_cur, obj_dict, dataset_dicts)
+                        save_zfs_obj(zfsobj_cur, obj_dict)
                         count = count + 1
                 if count % 15000 == 0:
                     if zfsobj_db is not None:
@@ -190,7 +194,6 @@ def parse_zdb(id0, inputfile, zfsobj_db=None, dataset_dicts=None):
                         ts = time.clock()
                         if ts > start:
                             util.show_timing(count, start, ts)
-                in_fat_zap = False
                 data_line = inputfile.readline().rstrip()
 
                 if zfs_obj_match_old:                       # without 'dnsize' in line, need to split 7 times
@@ -212,25 +215,7 @@ def parse_zdb(id0, inputfile, zfsobj_db=None, dataset_dicts=None):
                 elif obj_type == 'ZFS directory':
                     obj_type = 'd'
 
-                obj_dict = {'id': id0, 'obj_id': obj_id, 'obj_type': obj_type}
-            elif in_fat_zap:
-                # if (tabs_at_beginning(line) == 2) and (line[2].isdigit()) and (
-                #         '=' in line) and ('type: ' in line):
-                #     chopped = line.split('(type: ')
-                #     pair = chopped[0].strip().split(' = ')
-                #     type0 = chopped[1].rstrip().rstrip(')')
-                #     if type0 == 'Regular File':
-                #         name = int(pair[0])
-                #         idx = int(pair[1])
-                #         if 'fatZap' not in obj_dict:
-                #             obj_dict['fatZap'] = {}
-                #         obj_dict['fatZap'][name] = {'target': idx,
-                #                                     'type': type0}
-                #     else:
-                #         pass
-                #  print('Not saving info for type {0:s}.'.format(type))
-                pass
-                #                        print('Not saving info for type {0:s}.'.format(type))
+                obj_dict = {'obj_id': obj_id, 'obj_type': obj_type}
             # Saw this in 0.7.5-based 'zdb -dddd' output on pool; need to skip these four lines
             elif 'Dnode slots:' in line:
                 # Occurs at the end of the dataset info:
@@ -327,7 +312,7 @@ def parse_zdb(id0, inputfile, zfsobj_db=None, dataset_dicts=None):
                 elif stripped.startswith("pflags	"):
                     pass
                 elif stripped.startswith("Fat ZAP stats:"):
-                    in_fat_zap = True
+                    pass
                 elif stripped.startswith("microzap: "):
                     pass
                 else:
@@ -336,46 +321,28 @@ def parse_zdb(id0, inputfile, zfsobj_db=None, dataset_dicts=None):
                     raise Exception(msg0.format(dataset_name, obj_id, stripped))
 
         if obj_type == 'f' and obj_dict.get('fid') is not None:
-            save_zfs_obj(zfsobj_cur, obj_dict, dataset_dicts)
+            save_zfs_obj(zfsobj_cur, obj_dict)
         elif obj_type == 'd' and obj_dict.get('trusted.link') is not None:
-            save_zfs_obj(zfsobj_cur, obj_dict, dataset_dicts)
+            save_zfs_obj(zfsobj_cur, obj_dict)
 
     except IOError as e:
         print("I/O error({0}): {1}".format(e.errno, e.strerror))
         raise
-    if zfsobj_db is not None:
-        zfsobj_db.commit()
-    return id0
+
+    create_zfsobj_db_indices(zfsobj_db)
+    zfsobj_db.commit()
+    zfsobj_db.close()
+
 
 
 # persist-db____
 
-# def lookup(ost_dbs, ostIdx, objId):
-#    ost_zfsobj_db = ost_dbs[ostIdx]
-#    query = 'select id, from_id, to_id, zfs_type from fatzap where ' \
-#            'from_id=' + str(objId) + ' and zfs_type="Regular File"'
-# todo: switch to new methodology
-# def lookup(ost_dbs0, ost_idx, fid):
 def lookup(ost_dbs0, ost_idx, fidseq, fidoid):
     ost_zfsobj_db = ost_dbs0[ost_idx]
     # fid.rsplit(':',1)[0] trims off the version, which is different for each
     # ost stripe of the FID with a 0x0 version.
-
     # partialfid = fid.rsplit(':', 1)[0] + ':%'
-    # Note: It's important to 
-    #    query = 'select id, from_id, to_id, zfs_type from fatzap where ' \
-    #            'fid like "' + partialfid + '" and zfs_type="Regular File"'
-    #    fatzap_cursor = ost_zfsobj_db.cursor()
-    #    fatzap_cursor.execute(query)
-    #    all_fatzap = fatzap_cursor.fetchall()
-    #    fatzap_cursor.close()
 
-    # Ask Ken about this. [2018-05-09, SDS]
-    #    if len(all_fatzap) > 1:
-    #        print('objId, bam zap tot: ' + str(objId) + ', ' + str(len(all_fatzap)))
-
-    #    for fatzap_row in all_fatzap:
-    #        (id, from_id, to_id, zfs_type) = fatzap_row
     zfsobj_cursor = ost_zfsobj_db.cursor()
     zfsobj_cursor.execute('''select size from zfsobj where fidseq = ? and fidoid = ?''', [fidseq, fidoid])
     all_row = zfsobj_cursor.fetchall()
@@ -533,30 +500,49 @@ def persist(metadata_db_fname, mdt_dbs0, ost_dbs0):
 
 
 def parse(file_paths):
+    from multiprocessing import Process
+
     mdt_dbs0 = {}
     ost_dbs0 = {}
-    for name in file_paths:
-        start = time.clock()
-        lustre_type, rest = name.split("_")
-        pair = rest.split(".")
+
+    proc_list = []
+    for zdb_fname in file_paths:
+        lustre_type, rest = zdb_fname.split('_', 1)
+        pair = rest.split('.', 1)
         id0 = int(pair[0])
         dump_type = pair[1]
-        print('processing file: ' + name)
-        zfsobj_db_fname = lustre_type + '_' + str(id0) + '.db'
-        zfsobj_db = setup_zfsobj_db(zfsobj_db_fname)
         if dump_type != "zdb":
             raise Exception("only zdb dumps currently supported")
-        count = parse_zdb(id0, fileinput.input([name]), zfsobj_db)
-        zfsobj_cur = zfsobj_db.cursor()
-        zfsobj_cur.execute('create index zfsobj_trustedlov_index on '
-                           'zfsobj (trusted_lov)')
-        zfsobj_cur.execute('create index zfsobj_fid_index on zfsobj (fidseq, fidoid, fidver)')
 
-        #        zfsobj_cur.execute('create index fatzap_from_id_index on fatzap '
-        #                           '(from_id)')
-        zfsobj_db.commit()
-        ts = time.clock()
-        util.show_timing(count, start, ts)
+        print('processing file: ' + zdb_fname)
+        zfsobj_db_fname = lustre_type + '_' + str(id0) + '.db'
+
+#    for zfsobj_db_fname in zfsobj_db_fnames:
+        # parse_zdb(zdb_fname, zfsobj_db_fname)
+
+        proc_list.append(Process(target=parse_zdb, args=(zdb_fname, zfsobj_db_fname)))
+
+    tstart = time.clock()
+    for p in proc_list:
+        p.start()
+    for p in proc_list:
+        p.join()
+    dt = time.clock() - tstart
+
+    print('Parallel ZDB consumption in {0:f} seconds.'.format(dt))
+
+    # Need to open DBs to hand off DB handles to calling function (i.e. main())
+
+    # I would like to separate the opening of sqlite db files in this routine. So, this is temporary
+    # until the parallel zdb consumption part is done. Just repeating what happens above, to recreate
+    # the filenames for sqlite db files before opening them.
+    for zdb_fname in file_paths:
+        lustre_type, rest = zdb_fname.split('_', 1)
+        pair = rest.split('.', 1)
+        id0 = int(pair[0])
+
+        zfsobj_db_fname = lustre_type + '_' + str(id0) + '.db'
+        zfsobj_db = sqlite3.connect(zfsobj_db_fname)
         if lustre_type == 'mdt':
             mdt_dbs0[id0] = zfsobj_db
         elif lustre_type == 'ost':
