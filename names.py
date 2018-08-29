@@ -68,14 +68,21 @@ def clean_remote_dirs(conn):
     for row in rows:
         (rowid, fid, name, parent_fid) = row
 
-        if re.match("\[{fid:s}\]:[0-9]".format(fid=fid), name):
-            children = cur2.execute("select rowid from names where parent_fid = ?", [fid])
+        if re.match('\[{fid:s}\]:[0-9]'.format(fid=fid), name):
+            children = cur2.execute('select rowid from names where parent_fid = ?', [fid])
 
             for child_row in children:
                 child_rowid = child_row[0]
-                cur3.execute("update names set parent_fid = ? where rowid = ?", [parent_fid, child_rowid])
+                cur3.execute('update names set parent_fid = ? where rowid = ?', [parent_fid, child_rowid])
 
-        cur2.execute("delete from names where rowid = ?", [rowid])
+            # Clean up row in names that matched this virtual filesystem object.
+            cur2.execute('delete from names where rowid = ?', [rowid])
+
+            # Clean up matching rows in the metadata table as well.
+            cur2.execute('delete from metadata where fid = ?', [fid])
+        else:
+            print('Note that names.clean_remote_dirs() saw name like {name:s} '
+                  'that did not match its fid [{fid:s}]'.format(name=name, fid=fid))
 
     conn.commit()
 
