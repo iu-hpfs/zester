@@ -118,7 +118,7 @@ def parseLovInfo(hexLov):
 #    lmmStripeSize = str(int(tmpSize, 16) * 65536)
 
     lmmStripeSize = []
-    for i in [ 54, 55, 52, 53, 50, 51, 48, 49  ]:
+    for i in [ 54, 55, 52, 53, 50, 51, 48, 49 ]:
         lmmStripeSize.append(hexLov[i])
     lmmStripeSize = ''.join(lmmStripeSize)
 
