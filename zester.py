@@ -133,7 +133,7 @@ def save_zfs_obj(zfs_cur, obj_dict):
 def parse_zdb(zdb_fname, zfsobj_db_fname):
     count = 0
     obj_id = None
-    start = time.clock()
+    start = time.time()
     obj_dict = None
     dataset_name = None
 
@@ -191,7 +191,7 @@ def parse_zdb(zdb_fname, zfsobj_db_fname):
                     if zfsobj_db is not None:
                         zfsobj_db.commit()
                         zfsobj_cur = zfsobj_db.cursor()
-                        ts = time.clock()
+                        ts = time.time()
                         if ts > start:
                             util.show_timing(count, start, ts)
                 data_line = inputfile.readline().rstrip()
@@ -274,12 +274,17 @@ def parse_zdb(zdb_fname, zfsobj_db_fname):
                             try:
                                 trusted_lov_hex = binascii.hexlify(
                                     str(fidinfo.decoder(trusted_lov)))
-                                parsed = lovinfo.parseLovInfo(trusted_lov_hex)
-                                obj_dict['objects'] = str(
-                                    parsed['ost_index_objids'])
-                                parsed_lov = lovinfo.parseLovInfo(
-                                    binascii.hexlify(
-                                        str(fidinfo.decoder(trusted_lov))))
+
+                                # Don't know why we called this twice. We're not storing ost_index_objids anymore either.
+                                #parsed = lovinfo.parseLovInfo(trusted_lov_hex)
+                                #obj_dict['objects'] = str(
+                                #    parsed['ost_index_objids'])
+                                #
+                                #parsed_lov = lovinfo.parseLovInfo(
+                                #    binascii.hexlify(
+                                #        str(fidinfo.decoder(trusted_lov))))
+
+                                parsed_lov = lovinfo.parseLovInfo(trusted_lov_hex)
                                 fid = hex(
                                     int(parsed_lov['lmm_seq'], 16)) + ':' + hex(
                                     int(parsed_lov['lmm_object_id'],
@@ -337,20 +342,23 @@ def parse_zdb(zdb_fname, zfsobj_db_fname):
 
 # persist-db____
 
-def lookup(ost_dbs0, ost_idx, fidseq, fidoid):
+#def lookup(ost_dbs0, ost_idx, fidseq, fidoid):
+def lookup(ost_dbs0, ost_idx, obj_idx):
     ost_zfsobj_db = ost_dbs0[ost_idx]
     # fid.rsplit(':',1)[0] trims off the version, which is different for each
     # ost stripe of the FID with a 0x0 version.
     # partialfid = fid.rsplit(':', 1)[0] + ':%'
 
     zfsobj_cursor = ost_zfsobj_db.cursor()
-    zfsobj_cursor.execute('''select size from zfsobj where fidseq = ? and fidoid = ?''', [fidseq, fidoid])
+    #zfsobj_cursor.execute('''select size from zfsobj where fidseq = ? and fidoid = ?''', [fidseq, fidoid])
+    zfsobj_cursor.execute('''select size from zfsobj where id = ?''', [obj_idx])
     all_row = zfsobj_cursor.fetchall()
     zfsobj_cursor.close()
 
     if len(all_row) > 1:
-        fid = int2fid(fidseq, fidoid, 0x0)
-        print('[zester.lookup()]: More than one partial fid match to [{0:s}] in ost index {1:d}.'.format(fid, ost_idx))
+        #fid = int2fid(fidseq, fidoid, 0x0)
+        #print('[zester.lookup()]: More than one partial fid match to [{0:s}] in ost index {1:d}.'.format(fid, ost_idx))
+        print('[zester.lookup()]: More than one obj_idx match to object {0:d} in ost index {1:d}.'.format(obj_idx, ost_idx))
 
     size_of_stripes_on_ost = 0
     for zfsobj_row in all_row:
@@ -366,9 +374,15 @@ def get_total_size(ost_dbs0, parsed_lov):
     ost_index_objids = map(lambda tup: (int(tup[0]), int(tup[1])), parsed_raw)
 
     for lov_ost_idx, lov_obj_idx in ost_index_objids:
-        fidseq = int(parsed_lov['lmm_seq'], 16)
-        fidoid = int(parsed_lov['lmm_object_id'], 16)
-        total_size = total_size + lookup(ost_dbs0, lov_ost_idx, fidseq, fidoid)
+        #fidseq = int(parsed_lov['lmm_seq'], 16)
+        #fidoid = int(parsed_lov['lmm_object_id'], 16)
+        #stripe_size = lookup(ost_dbs0, lov_ost_idx, fidseq, fidoid)
+
+        stripe_size = lookup(ost_dbs0, lov_ost_idx, lov_obj_idx)
+
+        total_size = total_size + stripe_size
+
+        #total_size = total_size + lookup(ost_dbs0, lov_ost_idx, fidseq, fidoid)
 
     return total_size
 
@@ -377,7 +391,7 @@ def commit_meta_db(count, meta_cur, meta_db, start):
     if count % 5000 == 0:
         meta_db.commit()
         meta_cur = meta_db.cursor()
-        ts = time.clock()
+        ts = time.time()
         util.show_timing(count, start, ts)
     return meta_cur
 
@@ -395,7 +409,7 @@ def commit_meta_db(count, meta_cur, meta_db, start):
 
 def persist_names(name_db, mdt_dbs0):
     count = 0
-    start = time.clock()
+    start = time.time()
     name_cur = name_db.cursor()
 
     # Insert an entry for the filesystem root, which in Lustre 2.x has a FID of [0x200000007:0x1:0x0].
@@ -435,7 +449,7 @@ def persist_names(name_db, mdt_dbs0):
 
 def persist_objects(meta_db, mdt_dbs0, ost_dbs0):
     count = 0
-    start = time.clock()
+    start = time.time()
     meta_cur = meta_db.cursor()
     for mdt_dataset_id, mdt_dataset_db in mdt_dbs0.items():
         query = '''select id, uid, gid, ctime, mtime, atime, mode, obj_type,
@@ -460,7 +474,7 @@ def persist_objects(meta_db, mdt_dbs0, ost_dbs0):
                 size = 0
                 metadata.save_metadata_obj(meta_cur, fid, uid, gid, ctime, mtime, atime, mode, size, obj_type)
 
-            if count % 100 == 0:
+            if count % 10000 == 0:
                 print('Persisted {0:08d} records.'.format(count))
 
             # Check to see if it's time to force a commit, and if so, do it.
@@ -522,12 +536,14 @@ def parse(file_paths):
 
         proc_list.append(Process(target=parse_zdb, args=(zdb_fname, zfsobj_db_fname)))
 
-    tstart = time.clock()
+    # CPU time used by the parent process will not reflect the time spent
+    # waiting for parallel processes to finish. Use time.time().
+    tstart = time.time()
     for p in proc_list:
         p.start()
     for p in proc_list:
         p.join()
-    dt = time.clock() - tstart
+    dt = time.time() - tstart
 
     print('Parallel ZDB consumption in {0:f} seconds.'.format(dt))
 
