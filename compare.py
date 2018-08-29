@@ -13,6 +13,7 @@
 
 import sqlite3
 import names
+import stat
 
 
 def check_time(time0, time1):
@@ -33,17 +34,20 @@ def check_zester_to_posix(posix_db, zester_db):
             posix_query = "SELECT uid, gid, ctime, mtime, atime, mode, size FROM [metadata] where path = ?"
             posix_cursor.execute(posix_query, [posix_search_path])
             posix_curr_row = posix_cursor.fetchone()
-            (posix_uid, posix_gid, posix_ctime, posix_mtime, posix_atime, posix_mode, posix_size) = posix_curr_row
-            if not check_time(posix_atime, zester_atime):
-                print('!atime', posix_search_path, zester_fid, posix_atime, zester_atime)
-            if not check_time(posix_ctime, zester_ctime):
-                print('!ctime', posix_search_path, zester_fid, posix_ctime, zester_ctime)
-            if not check_time(posix_mtime, zester_mtime):
-                print('!mtime', posix_search_path, zester_fid, posix_mtime, zester_mtime)
-            if posix_mode != zester_mode: print('!mode', posix_search_path, zester_fid)
-            if posix_size != zester_size: print('!size', posix_search_path, zester_fid)
-            if posix_uid != zester_uid: print('!uid', posix_search_path, zester_fid)
-            if posix_gid != zester_gid: print('!gid', posix_search_path, zester_fid)
+            try:
+                (posix_uid, posix_gid, posix_ctime, posix_mtime, posix_atime, posix_mode, posix_size) = posix_curr_row
+                if not check_time(posix_atime, zester_atime):
+                    print('!atime', posix_search_path, zester_fid, posix_atime, zester_atime)
+                if not check_time(posix_ctime, zester_ctime):
+                    print('!ctime', posix_search_path, zester_fid, posix_ctime, zester_ctime)
+                if not check_time(posix_mtime, zester_mtime):
+                    print('!mtime', posix_search_path, zester_fid, posix_mtime, zester_mtime)
+                if posix_mode != zester_mode: print('!mode', posix_search_path, zester_fid)
+                if posix_size != zester_size: print('!size', posix_search_path, zester_fid)
+                if posix_uid != zester_uid: print('!uid', posix_search_path, zester_fid)
+                if posix_gid != zester_gid: print('!gid', posix_search_path, zester_fid)
+            except Exception:
+                print("bam", posix_search_path)
 
 
 def check_posix_to_zester(posix_db, zester_db):
@@ -74,10 +78,17 @@ def check_posix_to_zester(posix_db, zester_db):
                         '!ctime', zester_search_path, zester_fid, posix_ctime, zester_ctime)
                     if not check_time(posix_mtime, zester_mtime): print(
                         '!mtime', zester_search_path, zester_fid, posix_mtime, zester_mtime)
-                    if posix_mode != zester_mode: print('!mode', zester_search_path, zester_fid)
-                    if posix_size != zester_size: print('!size', zester_search_path, zester_fid)
-                    if posix_uid != zester_uid: print('!uid', zester_search_path, zester_fid)
-                    if posix_gid != zester_gid: print('!gid', zester_search_path, zester_fid)
+                    if posix_mode != zester_mode:
+                        print('!mode', zester_search_path, zester_fid, posix_mode, zester_mode)
+                    if posix_size != zester_size:
+                        if stat.S_ISREG(posix_mode):
+                            print('!size_file', zester_search_path, zester_fid, 'p:', posix_size, 'z:', zester_size)
+                        else:
+                            print('!size_notfile', zester_search_path, zester_fid, 'p:', posix_size, 'z:', zester_size)
+                    if posix_uid != zester_uid:
+                        print('!uid', zester_search_path, zester_fid, posix_uid, zester_uid)
+                    if posix_gid != zester_gid:
+                        print('!gid', zester_search_path, zester_fid, posix_gid, zester_gid)
             except UnicodeEncodeError:
                 print('unicode exception', zester_search_path)
 
@@ -93,3 +104,5 @@ def doCompare(zester_db_fname, posix_db_fname):
 
 if __name__ == '__main__':
     doCompare('metadata.db', 'stats.db')
+    # doCompare('22000/metadata.db', '22000/stats.db')
+    # doCompare('1000000/metadata.db', '1000000/stats.db')
