@@ -340,25 +340,23 @@ def parse_zdb(zdb_fname, zfsobj_db_fname):
 
 
 
-# persist-db____
+# persist-db
 
-#def lookup(ost_dbs0, ost_idx, fidseq, fidoid):
-def lookup(ost_dbs0, ost_idx, obj_idx):
+def lookup(ost_dbs0, ost_idx, fidseq, fidoid):
     ost_zfsobj_db = ost_dbs0[ost_idx]
     # fid.rsplit(':',1)[0] trims off the version, which is different for each
     # ost stripe of the FID with a 0x0 version.
     # partialfid = fid.rsplit(':', 1)[0] + ':%'
 
     zfsobj_cursor = ost_zfsobj_db.cursor()
-    #zfsobj_cursor.execute('''select size from zfsobj where fidseq = ? and fidoid = ?''', [fidseq, fidoid])
-    zfsobj_cursor.execute('''select size from zfsobj where id = ?''', [obj_idx])
+    zfsobj_cursor.execute('''select size from zfsobj where fidseq = ? and fidoid = ?''',
+                          [fidseq, fidoid])
     all_row = zfsobj_cursor.fetchall()
     zfsobj_cursor.close()
 
     if len(all_row) > 1:
-        #fid = int2fid(fidseq, fidoid, 0x0)
-        #print('[zester.lookup()]: More than one partial fid match to [{0:s}] in ost index {1:d}.'.format(fid, ost_idx))
-        print('[zester.lookup()]: More than one obj_idx match to object {0:d} in ost index {1:d}.'.format(obj_idx, ost_idx))
+        fid = int2fid(fidseq, fidoid, 0x0)
+        print('[zester.lookup()]: More than one fid seq:oid match to [{0:s}] in ost index {1:d}.'.format(fid, ost_idx))
 
     size_of_stripes_on_ost = 0
     for zfsobj_row in all_row:
@@ -373,16 +371,22 @@ def get_total_size(ost_dbs0, parsed_lov):
     parsed_raw = parsed_lov['ost_index_objids']
     ost_index_objids = map(lambda tup: (int(tup[0]), int(tup[1])), parsed_raw)
 
+
+    # Create a unique list of OST indices which contain stripes for this file.
+    unique_ost_list = []
     for lov_ost_idx, lov_obj_idx in ost_index_objids:
-        #fidseq = int(parsed_lov['lmm_seq'], 16)
-        #fidoid = int(parsed_lov['lmm_object_id'], 16)
-        #stripe_size = lookup(ost_dbs0, lov_ost_idx, fidseq, fidoid)
+        if lov_ost_idx not in unique_ost_list:
+            unique_ost_list.append(lov_ost_idx)
 
-        stripe_size = lookup(ost_dbs0, lov_ost_idx, lov_obj_idx)
+    # This sort isn't necessary, but I am leaving it in for now, for any further debugging.
+    unique_ost_list.sort()
 
+    for lov_ost_idx in unique_ost_list:
+        fidseq = int(parsed_lov['lmm_seq'], 16)
+        fidoid = int(parsed_lov['lmm_object_id'], 16)
+
+        stripe_size = lookup(ost_dbs0, lov_ost_idx, fidseq, fidoid)
         total_size = total_size + stripe_size
-
-        #total_size = total_size + lookup(ost_dbs0, lov_ost_idx, fidseq, fidoid)
 
     return total_size
 
