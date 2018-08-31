@@ -609,6 +609,6 @@ if __name__ == '__main__':
         print(path)
 
     print(names.path_to_fid(db, 'slavin/unicode-test'))
-    print(names.path_to_fid(db, 'slavin/unicode-test/Šħâŵƞ'))
+    print(names.path_to_fid(db, u'slavin/unicode-test/Šħâŵƞ'))
 
     db.close()
