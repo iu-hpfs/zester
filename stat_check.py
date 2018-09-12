@@ -45,8 +45,7 @@ def get_filetype(mode):
 
 
 def make_stats(topdir, dbPath):
-    conn = sqlite3.connect(dbPath, isolation_level=None)
-    #conn.text_factory = str
+    conn = sqlite3.connect(dbPath) # , isolation_level=None)
     c = conn.cursor()
     c.execute('drop table if exists metadata')
     c.execute('''create table metadata (
