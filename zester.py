@@ -75,7 +75,6 @@ def get_entries_for_uid_in_path(uid, path):
 
 def open_zfsobj_db(zfsobj_db_fame):
     zfsobj_db = sqlite3.connect(zfsobj_db_fame)
-    #zfsobj_db.text_factory = str
     return zfsobj_db
 
 
@@ -391,10 +390,10 @@ def get_total_size(ost_dbs0, parsed_lov):
     return total_size
 
 
-def commit_meta_db(count, meta_cur, meta_db, start):
+def commit_metadata_db(count, meta_cur, metadata_db, start):
     if count % 5000 == 0:
-        meta_db.commit()
-        meta_cur = meta_db.cursor()
+        metadata_db.commit()
+        meta_cur = metadata_db.cursor()
         ts = time.time()
         util.show_timing(count, start, ts)
     return meta_cur
@@ -411,9 +410,12 @@ def commit_meta_db(count, meta_cur, meta_db, start):
 # linkinfo.parse_link_info(trusted_link_hex):
 # -> [{'pfid': '0x200000400:0x2:0x0', 'filename': 'a'}, {'pfid': '0x240000401:0x2:0
 
-def persist_names(name_db, mdt_dbs0):
+def persist_names(name_db_fname, mdt_dbs0):
+    name_db = sqlite3.connect(name_db_fname)
+    names.setup_name_table(name_db)
+
     count = 0
-    start = time.time()
+    tstart = time.time()
     name_cur = name_db.cursor()
 
     # Insert an entry for the filesystem root, which in Lustre 2.x has a FID of [0x200000007:0x1:0x0].
@@ -448,22 +450,61 @@ def persist_names(name_db, mdt_dbs0):
     name_db.commit()
     print('closing')
     name_cur.close()
+    names.clean_remote_dirs(name_db)
+    name_db.commit()
+    name_db.close()
     print('done')
 
+    dt = time.time() - tstart
+    print('Serial names table creation in {0:f} seconds.'.format(dt))
 
-def persist_objects(meta_db, mdt_dbs0, ost_dbs0):
-    count = 0
-    start = time.time()
-    meta_cur = meta_db.cursor()
-    for mdt_dataset_id, mdt_dataset_db in mdt_dbs0.items():
-        query = '''select id, uid, gid, ctime, mtime, atime, mode, obj_type,
-                  size, fid, trusted_link, trusted_lov from zfsobj'''
-        mdt_cursor = mdt_dataset_db.cursor()
-        mdt_cursor.execute(query)
-        mdt_curr_row = mdt_cursor.fetchone()
-        while mdt_curr_row is not None:
-            (id0, uid, gid, ctime, mtime, atime, mode, obj_type, size, fid,
-             trusted_link, trusted_lov) = mdt_curr_row
+
+def persist_object_writer(metadata_db_fname, resultq):
+    import os
+    pid = os.getpid()
+    ppid = os.getppid()
+
+    metadata_db = sqlite3.connect(metadata_db_fname)
+    metadata.setup_metadata_db(metadata_db)
+
+    meta_cur = metadata_db.cursor()
+
+    while True:
+        result = resultq.get()
+
+        if result[0] == 'DONE':
+            print("persist_object_writer with pid|ppid = {0:d}|{1:d} saw 'DONE'. Exiting.".format(pid,ppid))
+            print('committing metadata db')
+            metadata_db.commit()
+            print('closing metadata db')
+            meta_cur.close()
+            print('metadata db cursor closed')
+            metadata_db.close()
+            print('metadata db closed. Exiting')
+            break
+        else:
+            (fid, uid, gid, ctime, mtime, atime, mode, size, obj_type) = result
+            metadata.save_metadata_obj(meta_cur, fid, uid, gid, ctime, mtime, atime, mode, size, obj_type)
+
+def persist_object_worker(ost_db_fnames, workq, resultq):
+    import os
+    pid = os.getpid()
+    ppid = os.getppid()
+
+    ost_dbs0 = {}
+    for ikey in ost_db_fnames.keys():
+        ost_dbs0[ikey] = sqlite3.connect(ost_db_fnames[ikey])
+
+    while True:
+        work = workq.get()
+
+        if work[0] == 'DONE':
+            print("persist_object_worker with pid|ppid = {0:d}|{1:d} saw 'DONE'. Exiting.".format(pid,ppid))
+            for ikey in ost_dbs0.keys():
+                ost_dbs0[ikey].close()
+            break
+        else:
+            (id0, uid, gid, ctime, mtime, atime, mode, obj_type, size, fid, trusted_link, trusted_lov) = work
             if obj_type == 'f':
                 if trusted_lov is not None:
                     parsed_lov = lovinfo.parseLovInfo(binascii.hexlify(str(fidinfo.decoder(trusted_lov))))
@@ -471,57 +512,109 @@ def persist_objects(meta_db, mdt_dbs0, ost_dbs0):
                 else:
                     # Flag any cases where no trusted_lov exists from which to calculate file size.
                     size = -1
-                count = count + 1
-                metadata.save_metadata_obj(meta_cur, fid, uid, gid, ctime, mtime, atime, mode, size, obj_type)
             elif obj_type == 'd':
-                count = count + 1
                 size = 0
-                metadata.save_metadata_obj(meta_cur, fid, uid, gid, ctime, mtime, atime, mode, size, obj_type)
+
+            result = (fid, uid, gid, ctime, mtime, atime, mode, size, obj_type)
+            resultq.put(result)
+
+
+def persist_objects(metadata_db_fname, mdt_dbs0, ost_db_fnames):
+    import multiprocessing as mp
+    nworkers = 6
+    workq = mp.Queue()
+    resultq = mp.Queue()
+
+    print('Starting one metadata db writer process.')
+    writerp = mp.Process(target = persist_object_writer, args = (metadata_db_fname, resultq))
+    writerp.start()
+
+    print('Starting {0:d} parallel worker processes.'.format(nworkers))
+    workerp = []
+    for i in range(nworkers):
+        workerp.append(mp.Process(target = persist_object_worker, args = (ost_db_fnames, workq, resultq)))
+
+    for i in range(nworkers):
+        workerp[i].start()
+
+# Now, loop over the contents of each MDT db, and delegate work to parallel workers.
+
+    count = 0
+    tstart = time.time()
+    for mdt_dataset_id, mdt_dataset_db in mdt_dbs0.items():
+        query = '''select id, uid, gid, ctime, mtime, atime, mode, obj_type,
+                  size, fid, trusted_link, trusted_lov from zfsobj'''
+        mdt_cursor = mdt_dataset_db.cursor()
+        mdt_cursor.execute(query)
+        mdt_curr_row = mdt_cursor.fetchone()
+        while mdt_curr_row is not None:
+            workq.put(mdt_curr_row)
+            count = count + 1
 
             if count % 10000 == 0:
                 print('Persisted {0:08d} records.'.format(count))
 
             # Check to see if it's time to force a commit, and if so, do it.
-            meta_cur = commit_meta_db(count, meta_cur, meta_db, start)
+            #meta_cur = commit_metadata_db(count, meta_cur, metadata_db, start)
 
             # Grab the next row.
             mdt_curr_row = mdt_cursor.fetchone()
         mdt_cursor.close()
     print('total ' + str(count))
-    print('committing')
-    meta_db.commit()
-    print('closing')
-    meta_cur.close()
+
+    # Tell worker processes they can exit.
+    print('Telling worker processes that work is DONE.')
+    for i in range(nworkers):
+        workq.put(('DONE',))
+
+    # Wait for worker processes to exit.
+    for i in range(nworkers):
+        if workerp[i].is_alive():
+            workerp[i].join()
+        else:
+            print('workerp[{0:d}] with name {1:s} was gone. No join needed.'.format(i, workerp[i].name))
+
+    # Tell writer process it can exit.
+    print('Telling writer process that work is DONE.')
+    resultq.put(('DONE',))
+
+    # Wait for the writer process to finish writing, committing,
+    # and closing metadata db.
+    if writerp.is_alive():
+        writerp.join()
+    else:
+        print('writerp with name {0:s} was gone. No join needed.'.format(i, workerp[i].name))
+
     print('done')
 
+    dt = time.time() - tstart
+    print('Parallel metadata table creation in {0:f} seconds.'.format(dt))
 
-def persist(metadata_db_fname, mdt_dbs0, ost_dbs0):
+
+def persist(metadata_db_fname, mdt_db_fnames, ost_db_fnames):
     print('persisting objects')
-    meta_db = sqlite3.connect(metadata_db_fname)
-    #meta_db.text_factory = str
-    metadata.setup_metadata_db(meta_db)
-    persist_objects(meta_db, mdt_dbs0, ost_dbs0)
+    mdt_dbs0 = {}
+    for ikey in mdt_db_fnames.keys():
+        mdt_dbs0[ikey] = sqlite3.connect(mdt_db_fnames[ikey])
+
+    persist_objects(metadata_db_fname, mdt_dbs0, ost_db_fnames)
 
     print('persisting names')
-    # name_db = sqlite3.connect(name_db_fname)
-    name_db = meta_db  # Try out putting both the metadata and names tables into a singular metadata database.
-    #name_db.text_factory = str
-    names.setup_name_table(name_db)
-    persist_names(name_db, mdt_dbs0)
-    names.clean_remote_dirs(name_db)
+    name_db_fname = metadata_db_fname
+    persist_names(name_db_fname, mdt_dbs0)
 
-    print('building metadata indexes')
-    meta_cur = meta_db.cursor()
-    meta_db.commit()
-    meta_cur.close()
-    meta_db.close()
+    for ikey in mdt_dbs0:
+        mdt_dbs0[ikey].close()
+
 
 
 def parse(file_paths):
     from multiprocessing import Process
 
-    mdt_dbs0 = {}
-    ost_dbs0 = {}
+    #mdt_dbs0 = {}
+    #ost_dbs0 = {}
+    mdt_db_fnames = {}
+    ost_db_fnames = {}
 
     proc_list = []
     for zdb_fname in file_paths:
@@ -562,14 +655,16 @@ def parse(file_paths):
         id0 = int(pair[0])
 
         zfsobj_db_fname = lustre_type + '_' + str(id0) + '.db'
-        zfsobj_db = sqlite3.connect(zfsobj_db_fname)
+        #zfsobj_db = sqlite3.connect(zfsobj_db_fname)
         if lustre_type == 'mdt':
-            mdt_dbs0[id0] = zfsobj_db
+        #    mdt_dbs0[id0] = zfsobj_db
+            mdt_db_fnames[id0] = zfsobj_db_fname
         elif lustre_type == 'ost':
-            ost_dbs0[id0] = zfsobj_db
+        #    ost_dbs0[id0] = zfsobj_db
+            ost_db_fnames[id0] = zfsobj_db_fname
         else:
             raise Exception("must be ost or mdt dump")
-    return mdt_dbs0, ost_dbs0
+    return mdt_db_fnames, ost_db_fnames
 
 
 # main____
@@ -591,8 +686,8 @@ def main():
     if sys.argv[1] == '--parse':
         parse(sys.argv[2:])
     else:
-        mdt_dbs0, ost_dbs0 = parse(sys.argv[1:])
-        persist('metadata.db', mdt_dbs0, ost_dbs0)
+        mdt_db_fnames, ost_db_fnames = parse(sys.argv[1:])
+        persist('metadata.db', mdt_db_fnames, ost_db_fnames)
 
 
 if __name__ == '__main__':
