@@ -218,7 +218,7 @@ def path_to_fid(conn, srch_path):
             parent_fid = search_output[0]
         else:
             parent_fid = ''
-            sys.stderr.write('ERROR: No FID found for path: {0:s}\n'.format(srch_path))
+            sys.stderr.write(u'ERROR: No FID found for path: {0:s}\n'.format(srch_path))
             break
 
     fid = parent_fid
