@@ -711,17 +711,17 @@ def main():
 if __name__ == '__main__':
     main()
 
-    import sqlite3
-    import names
-    db = sqlite3.connect('metadata.db')
-
-    for path in names.fid_to_path(db, '0x200014b01:0x1:0x0'):
-        print(path)
-
-    for path in names.fid_to_path(db, '0x200014b01:0x2:0x0'):
-        print(path)
-
-    print(names.path_to_fid(db, 'slavin/unicode-test'))
-    print(names.path_to_fid(db, u'slavin/unicode-test/Šħâŵƞ'))
-
-    db.close()
+    # import sqlite3
+    # import names
+    # db = sqlite3.connect('metadata.db')
+    #
+    # for path in names.fid_to_path(db, '0x200014b01:0x1:0x0'):
+    #     print(path)
+    #
+    # for path in names.fid_to_path(db, '0x200014b01:0x2:0x0'):
+    #     print(path)
+    #
+    # print(names.path_to_fid(db, 'slavin/unicode-test'))
+    # print(names.path_to_fid(db, u'slavin/unicode-test/Šħâŵƞ'))
+    #
+    # db.close()
