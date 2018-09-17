@@ -521,72 +521,82 @@ def persist_object_worker(ost_db_fnames, workq, resultq):
 
 def persist_objects(metadata_db_fname, mdt_dbs0, ost_db_fnames):
     import multiprocessing as mp
+    import sys
+
     nworkers = 6
+
     workq = mp.Queue()
     resultq = mp.Queue()
 
     print('Starting one metadata db writer process.')
     writerp = mp.Process(target = persist_object_writer, args = (metadata_db_fname, resultq))
-    writerp.start()
 
     print('Starting {0:d} parallel worker processes.'.format(nworkers))
-    workerp = []
+    workerp_list = []
     for i in range(nworkers):
-        workerp.append(mp.Process(target = persist_object_worker, args = (ost_db_fnames, workq, resultq)))
+        workerp_list.append(mp.Process(target = persist_object_worker, args = (ost_db_fnames, workq, resultq)))
 
-    for i in range(nworkers):
-        workerp[i].start()
+    try:
+        writerp.start()
+        for p in workerp_list:
+            p.start()
 
-# Now, loop over the contents of each MDT db, and delegate work to parallel workers.
+        # Now, loop over the contents of each MDT db, and delegate work to parallel workers.
 
-    count = 0
-    tstart = time.time()
-    for mdt_dataset_id, mdt_dataset_db in mdt_dbs0.items():
-        query = '''select id, uid, gid, ctime, mtime, atime, mode, obj_type,
-                  size, fid, trusted_link, trusted_lov from zfsobj'''
-        mdt_cursor = mdt_dataset_db.cursor()
-        mdt_cursor.execute(query)
-        mdt_curr_row = mdt_cursor.fetchone()
-        while mdt_curr_row is not None:
-            workq.put(mdt_curr_row)
-            count = count + 1
-
-            if count % 10000 == 0:
-                print('Persisted {0:08d} records.'.format(count))
-
-            # Check to see if it's time to force a commit, and if so, do it.
-            #meta_cur = commit_metadata_db(count, meta_cur, metadata_db, start)
-
-            # Grab the next row.
+        count = 0
+        tstart = time.time()
+        for mdt_dataset_id, mdt_dataset_db in mdt_dbs0.items():
+            query = '''select id, uid, gid, ctime, mtime, atime, mode, obj_type,
+                       size, fid, trusted_link, trusted_lov from zfsobj'''
+            mdt_cursor = mdt_dataset_db.cursor()
+            mdt_cursor.execute(query)
             mdt_curr_row = mdt_cursor.fetchone()
-        mdt_cursor.close()
-    print('total ' + str(count))
+            while mdt_curr_row is not None:
+                workq.put(mdt_curr_row)
+                count = count + 1
 
-    # Tell worker processes they can exit.
-    print('Telling worker processes that work is DONE.')
-    for i in range(nworkers):
-        workq.put(('DONE',))
+                if count % 10000 == 0:
+                    print('Persisted {0:08d} records.'.format(count))
 
-    # Wait for worker processes to exit.
-    for i in range(nworkers):
-        if workerp[i].is_alive():
-            workerp[i].join()
+                # Check to see if it's time to force a commit, and if so, do it.
+                #meta_cur = commit_metadata_db(count, meta_cur, metadata_db, start)
+
+                # Grab the next row.
+                mdt_curr_row = mdt_cursor.fetchone()
+            mdt_cursor.close()
+        print('total ' + str(count))
+
+        # Tell worker processes they can exit.
+        print('Telling worker processes that work is DONE.')
+        for i in range(nworkers):
+            workq.put(('DONE',))
+
+        # Wait for worker processes to exit.
+        for p in workerp_list:
+            if p.is_alive():
+                p.join()
+            else:
+                print('persist_objects(): Worker process with name {0:s} was gone. No join needed.'.format(p.name))
+
+        # Tell writer process it can exit.
+        print('Telling writer process that work is DONE.')
+        resultq.put(('DONE',))
+
+        # Wait for the writer process to finish writing, committing,
+        # and closing metadata db.
+        if writerp.is_alive():
+            writerp.join()
         else:
-            print('workerp[{0:d}] with name {1:s} was gone. No join needed.'.format(i, workerp[i].name))
+            print('persist_objects(): Writer process with name {0:s} was gone. No join needed.'.format(writerp.name))
 
-    # Tell writer process it can exit.
-    print('Telling writer process that work is DONE.')
-    resultq.put(('DONE',))
-
-    # Wait for the writer process to finish writing, committing,
-    # and closing metadata db.
-    if writerp.is_alive():
-        writerp.join()
-    else:
-        print('writerp with name {0:s} was gone. No join needed.'.format(i, workerp[i].name))
-
-    print('done')
-
+        print('done')
+    except KeyboardInterrupt:
+        print('persist_objects(): Interrupted by keyboard. Terminating child processes...')
+        for p in workerp_list:
+            p.terminate()
+        writerp.terminate()
+        print('persist_objects(): Child processes terminated. Exiting.')
+        sys.exit(1)
     dt = time.time() - tstart
     print('Parallel metadata table creation in {0:f} seconds.'.format(dt))
 
@@ -609,7 +619,8 @@ def persist(metadata_db_fname, mdt_db_fnames, ost_db_fnames):
 
 
 def parse(file_paths):
-    from multiprocessing import Process
+    import multiprocessing as mp
+    import sys
 
     #mdt_dbs0 = {}
     #ost_dbs0 = {}
@@ -631,15 +642,22 @@ def parse(file_paths):
 #    for zfsobj_db_fname in zfsobj_db_fnames:
         # parse_zdb(zdb_fname, zfsobj_db_fname)
 
-        proc_list.append(Process(target=parse_zdb, args=(zdb_fname, zfsobj_db_fname)))
+        proc_list.append(mp.Process(target=parse_zdb, args=(zdb_fname, zfsobj_db_fname)))
 
     # CPU time used by the parent process will not reflect the time spent
     # waiting for parallel processes to finish. Use time.time().
     tstart = time.time()
-    for p in proc_list:
-        p.start()
-    for p in proc_list:
-        p.join()
+    try:
+        for p in proc_list:
+            p.start()
+        for p in proc_list:
+            p.join()
+    except KeyboardInterrupt:
+        for p in proc_list:
+            print('persist_objects(): Interrupted by keyboard. Terminating child processes...')
+            p.terminate()
+            print('persist_objects(): Child processes terminated. Exiting.')
+            sys.exit(1)
     dt = time.time() - tstart
 
     print('Parallel ZDB consumption in {0:f} seconds.'.format(dt))
