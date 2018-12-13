@@ -15,9 +15,11 @@
 import itertools
 import functools
 
+
 def partition_iter(iterator, partition_size):
     iterator = iter(iterator)
     return iter(lambda: tuple(itertools.islice(iterator, partition_size)), ())
+
 
 # --------------------------------------------------------------------------- #
 # parseLovInfo(): Pythonic function to mimic THC's script
@@ -204,14 +206,14 @@ def parseLovInfo(hexLov):
 # decide whether to go with the latter. There must be more dark magic I haven't
 # seen yet. See my Dropbox/Work/trusted.lov.notes file. [2018-05-07, SDS]
         ostObjIdValue = []
-        for i in [ 30, 31, 28, 29, 26, 27, 24, 25, 22, 23, 20, 21, 18, 19, 16, 17 ]: 
+        for i in [30, 31, 28, 29, 26, 27, 24, 25, 22, 23, 20, 21, 18, 19, 16, 17]:
             ostObjIdValue.append(record[i])
         ostObjIdValue = ''.join(ostObjIdValue)
         ostObjIdValueDecimal = str(int(ostObjIdValue, 16))
 
         if (ostObjIdValueDecimal == '0'):
             ostObjIdValue = []
-            for i in [ 14, 15, 12, 13, 10, 11, 8, 9, 6, 7, 4, 5, 2, 3, 0, 1]: 
+            for i in [14, 15, 12, 13, 10, 11, 8, 9, 6, 7, 4, 5, 2, 3, 0, 1]:
                ostObjIdValue.append(record[i])
             ostObjIdValue = ''.join(ostObjIdValue)
             ostObjIdValueDecimal = str(int(ostObjIdValue, 16))
@@ -225,4 +227,4 @@ def parseLovInfo(hexLov):
         'lmm_stripe_count':lmmStripeCount,
         'lmm_stripe_size':lmmStripeSize,
         'lmm_pool':lmmPool,
-        'ost_index_objids':list(partition_iter(ostObjId.strip().split(), 2)) }
+        'ost_index_objids':list(partition_iter(ostObjId.strip().split(), 2))}
