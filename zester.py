@@ -34,11 +34,13 @@ def fid2int(fid):
     fidseq = int(fidseq, 16)
     fidoid = int(fidoid, 16)
     fidver = int(fidver, 16)
-    return (fidseq, fidoid, fidver)
+    return fidseq, fidoid, fidver
+
 
 def int2fid(fidseq, fidoid, fidver=0x0):
     fid = hex(fidseq) + ':' + hex(fidoid) + ':' + hex(fidver)
     return fid
+
 
 def get_fids_for_uid(conn, uid):
     #old_text_factory = conn.text_factory
@@ -98,6 +100,7 @@ def setup_zfsobj_db(zfsobj_db_fname):
     zfsobj_cur.close()
     return zfsobj_db
 
+
 def create_zfsobj_db_indices(zfsobj_db):
     zfsobj_cur = zfsobj_db.cursor()
     zfsobj_cur.execute('create index zfsobj_trustedlov_index on '
@@ -105,6 +108,7 @@ def create_zfsobj_db_indices(zfsobj_db):
     zfsobj_cur.execute('create index zfsobj_fid_index on zfsobj (fidseq, fidoid, fidver)')
     zfsobj_db.commit()
     zfsobj_cur.close()
+
 
 def save_zfs_obj(zfs_cur, obj_dict):
     obj_id = obj_dict['obj_id']
@@ -132,6 +136,7 @@ def save_zfs_obj(zfs_cur, obj_dict):
 def parse_zdb(zdb_fname, zfsobj_db_fname):
     count = 0
     obj_id = None
+    obj_type = None
     start = time.time()
     obj_dict = None
     dataset_name = None
@@ -167,9 +172,9 @@ def parse_zdb(zdb_fname, zfsobj_db_fname):
             #
             # Work out whether the dump objects include the newer schema, with 'dnsize' or not,
             # and then do the right thing.
-            #zfs 0.6.4
+            # zfs 0.6.4
             zfs_obj_match_old = (line == '    Object  lvl   iblk   dblk  dsize  lsize   %full  type\n')
-            #zfs 0.7.5
+            # zfs 0.7.5
             zfs_obj_match_new = (line == '    Object  lvl   iblk   dblk  dsize  dnsize  lsize   %full  type\n')
 
             if zfs_obj_match_old:
@@ -267,21 +272,15 @@ def parse_zdb(zdb_fname, zfsobj_db_fname):
                             obj_dict['fid'] = str(fidinfo.decode_fid(octal_fid))
                         if name == 'trusted.link':
                             obj_dict['trusted.link'] = pair[1]
-                        if name == 'trusted.lov':
+                        # Only try to decode trusted.lov for files. Turns out striped directories have
+                        # a trusted.lov entry, which will break this code segment. They should have
+                        # fids decoded with 'trusted.lma' below.
+                        if name == 'trusted.lov' and obj_type == 'f':
                             trusted_lov = obj_dict['trusted.lov'] = pair[1]
                             # todo: eval decoding fid in later pass
                             try:
                                 trusted_lov_hex = binascii.hexlify(
                                     str(fidinfo.decoder(trusted_lov)))
-
-                                # Don't know why we called this twice. We're not storing ost_index_objids anymore either.
-                                #parsed = lovinfo.parseLovInfo(trusted_lov_hex)
-                                #obj_dict['objects'] = str(
-                                #    parsed['ost_index_objids'])
-                                #
-                                #parsed_lov = lovinfo.parseLovInfo(
-                                #    binascii.hexlify(
-                                #        str(fidinfo.decoder(trusted_lov))))
 
                                 parsed_lov = lovinfo.parseLovInfo(trusted_lov_hex)
                                 fid = hex(
@@ -290,6 +289,13 @@ def parse_zdb(zdb_fname, zfsobj_db_fname):
                                         16)) + ':0x0'
                                 obj_dict['fid'] = fid
                             except:
+                                print('')
+                                print('trusted_lov decoding failed for this entry...')
+                                print('    trusted_lov = ' + trusted_lov)
+                                print('trusted_lov_hex = ' + trusted_lov_hex)
+                                print('     parsed_lov = ', parsed_lov)
+                                print('            fid = ' + fid)
+                                print('       obj_type = ' + obj_type)
                                 pass
                         # We need a fid for directories, which do not have a 'trusted.lov' EA
                         if name == 'trusted.lma' and obj_type == 'd':
@@ -338,7 +344,6 @@ def parse_zdb(zdb_fname, zfsobj_db_fname):
     zfsobj_db.close()
 
 
-
 # persist-db
 
 def lookup(ost_dbs0, ost_idx, fidseq, fidoid):
@@ -369,7 +374,6 @@ def get_total_size(ost_dbs0, parsed_lov):
     total_size = 0
     parsed_raw = parsed_lov['ost_index_objids']
     ost_index_objids = map(lambda tup: (int(tup[0]), int(tup[1])), parsed_raw)
-
 
     # Create a unique list of OST indices which contain stripes for this file.
     unique_ost_list = []
@@ -441,7 +445,7 @@ def persist_names(name_db_fname, mdt_dbs0):
                     # todo: make sure this is normal
                     pass
                 except ValueError:
-                   # todo: make sure this is normal
+                    # todo: make sure this is normal
                     pass
             mdt_curr_row = mdt_cursor.fetchone()
         mdt_cursor.close()
@@ -473,7 +477,7 @@ def persist_object_writer(metadata_db_fname, resultq):
         result = resultq.get()
 
         if result[0] == 'DONE':
-            print("persist_object_writer with pid|ppid = {0:d}|{1:d} saw 'DONE'. Exiting.".format(pid,ppid))
+            print("persist_object_writer with pid|ppid = {0:d}|{1:d} saw 'DONE'. Exiting.".format(pid, ppid))
             print('committing metadata db')
             metadata_db.commit()
             print('closing metadata db')
@@ -485,6 +489,7 @@ def persist_object_writer(metadata_db_fname, resultq):
         else:
             (fid, uid, gid, ctime, mtime, atime, mode, size, obj_type) = result
             metadata.save_metadata_obj(meta_cur, fid, uid, gid, ctime, mtime, atime, mode, size, obj_type)
+
 
 def persist_object_worker(ost_db_fnames, workq, resultq):
     import os
@@ -499,7 +504,7 @@ def persist_object_worker(ost_db_fnames, workq, resultq):
         work = workq.get()
 
         if work[0] == 'DONE':
-            print("persist_object_worker with pid|ppid = {0:d}|{1:d} saw 'DONE'. Exiting.".format(pid,ppid))
+            print("persist_object_worker with pid|ppid = {0:d}|{1:d} saw 'DONE'. Exiting.".format(pid, ppid))
             for ikey in ost_dbs0.keys():
                 ost_dbs0[ikey].close()
             break
@@ -529,12 +534,12 @@ def persist_objects(metadata_db_fname, mdt_dbs0, ost_db_fnames):
     resultq = mp.Queue()
 
     print('Starting one metadata db writer process.')
-    writerp = mp.Process(target = persist_object_writer, args = (metadata_db_fname, resultq))
+    writerp = mp.Process(target=persist_object_writer, args=(metadata_db_fname, resultq))
 
     print('Starting {0:d} parallel worker processes.'.format(nworkers))
     workerp_list = []
     for i in range(nworkers):
-        workerp_list.append(mp.Process(target = persist_object_worker, args = (ost_db_fnames, workq, resultq)))
+        workerp_list.append(mp.Process(target=persist_object_worker, args=(ost_db_fnames, workq, resultq)))
 
     try:
         writerp.start()
@@ -559,7 +564,7 @@ def persist_objects(metadata_db_fname, mdt_dbs0, ost_db_fnames):
                     print('Persisted {0:08d} records.'.format(count))
 
                 # Check to see if it's time to force a commit, and if so, do it.
-                #meta_cur = commit_metadata_db(count, meta_cur, metadata_db, start)
+                # meta_cur = commit_metadata_db(count, meta_cur, metadata_db, start)
 
                 # Grab the next row.
                 mdt_curr_row = mdt_cursor.fetchone()
@@ -617,13 +622,12 @@ def persist(metadata_db_fname, mdt_db_fnames, ost_db_fnames):
         mdt_dbs0[ikey].close()
 
 
-
 def parse(file_paths):
     import multiprocessing as mp
     import sys
 
-    #mdt_dbs0 = {}
-    #ost_dbs0 = {}
+    # mdt_dbs0 = {}
+    # ost_dbs0 = {}
     mdt_db_fnames = {}
     ost_db_fnames = {}
 
@@ -673,12 +677,12 @@ def parse(file_paths):
         id0 = int(pair[0])
 
         zfsobj_db_fname = lustre_type + '_' + str(id0) + '.db'
-        #zfsobj_db = sqlite3.connect(zfsobj_db_fname)
+        # zfsobj_db = sqlite3.connect(zfsobj_db_fname)
         if lustre_type == 'mdt':
-        #    mdt_dbs0[id0] = zfsobj_db
+            # mdt_dbs0[id0] = zfsobj_db
             mdt_db_fnames[id0] = zfsobj_db_fname
         elif lustre_type == 'ost':
-        #    ost_dbs0[id0] = zfsobj_db
+            # ost_dbs0[id0] = zfsobj_db
             ost_db_fnames[id0] = zfsobj_db_fname
         else:
             raise Exception("must be ost or mdt dump")
