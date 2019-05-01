@@ -75,8 +75,8 @@ def get_entries_for_uid_in_path(uid, path):
 
 # zfs-db____
 
-def open_zfsobj_db(zfsobj_db_fame):
-    zfsobj_db = sqlite3.connect(zfsobj_db_fame)
+def open_zfsobj_db(zfsobj_db_fname):
+    zfsobj_db = sqlite3.connect(zfsobj_db_fname)
     return zfsobj_db
 
 
